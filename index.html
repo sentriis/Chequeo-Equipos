@@ -204,7 +204,7 @@ async function syncPending(silent){
 }
 window.addEventListener('online',()=>syncPending(true));
 const hist=()=>store.get('chq_hist',[]);
-const API_URL='https://script.google.com/macros/s/AKfycbz7Uqp22kxxHTFo2poDDAHkYiI2nz0z8ljF34tcXeRvDMMeO3QAv1_xzTVZmhNRTty-/exec';   // <- Pega aquí la dirección del servidor (termina en /exec). Si la dejas vacía, la app la pedirá al entrar.
+const API_URL='';   // <- Pega aquí la dirección del servidor (termina en /exec). Si la dejas vacía, la app la pedirá al entrar.
 function newRec(type){const d=new Date(),T=TYPES[type];return{id:Date.now().toString(36),type,fecha:ymd(d),hora:hm(d),sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),tipo:T.tipoDef,equipo:'',p1:'',p2:'',q1:'',q2:'',realizado:SES?SES.nombre:'',realizadoCI:SES?SES.ci:'',revisado:'',revisadoCI:'',revisadoFecha:'',obs:'',it:{},sync:false}}
 function suggestions(key,extra){const h=hist();return[...new Set([...(extra||[]),...h.map(r=>r[key]).filter(Boolean)])].slice(0,60)}
 const equiposDe=type=>store.get('chq_equipos',[]).filter(e=>e.tipo===type||e.tipo===TYPES[type].sheet||e.tipo===TYPES[type].name).map(e=>e.id)
