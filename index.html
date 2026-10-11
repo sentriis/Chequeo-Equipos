@@ -177,6 +177,7 @@ async function api(action,data){
  return j;
 }
 function errMsg(e){
+ if(e&&e.code==='accion')return 'El servidor de Google está desactualizado: falta publicar la "Nueva versión" de Codigo.gs (ver guía).';
  if(e&&e.msg)return e.msg;
  if(e&&e.code==='nourl')return 'Falta la dirección del servidor';
  if(e&&e.code==='red')return navigator.onLine===false?'Este teléfono no tiene internet':'No se pudo conectar con el servidor. Revisa que la dirección termine en /exec y que la implementación esté en "Cualquier persona". Usa "Probar conexión".';
@@ -201,7 +202,7 @@ async function syncPending(silent){
   l.records.forEach(sr=>{const ex=loc.get(String(sr.id));if(ex&&ex.sync===false)return;sr.sync=true;loc.set(String(sr.id),sr)});
   saveHist([...loc.values()]);
   store.set('chq_since',Math.max(store.get('chq_since',0),...l.records.map(r=>r.srv||0)));
-  await syncAlerts(silent);
+  try{await syncAlerts(silent)}catch(e){if(e&&e.code==='accion'){if(!S.warnOld){S.warnOld=1;toast(errMsg(e))}}else if(e&&e.code==='red')throw e;else if(!silent)toast(errMsg(e))}
   try{const e=await api('equipos');store.set('chq_equipos',e.equipos)}catch(_){}
   if(!silent)toast(pend.length?'Chequeos enviados y actualizados':'Todo actualizado');
  }catch(e){if(!silent)toast(errMsg(e))}
@@ -209,6 +210,7 @@ async function syncPending(silent){
 }
 window.addEventListener('online',()=>syncPending(true));
 const hist=()=>store.get('chq_hist',[]);
+const SERVER_VERSION='2026-10-11-e';   // debe coincidir con VERSION en Codigo.gs
 const API_URL='';   // <- Pega aquí la dirección del servidor (termina en /exec). Si la dejas vacía, la app la pedirá al entrar.
 function newRec(type){const d=new Date(),T=TYPES[type];return{id:Date.now().toString(36),type,fecha:ymd(d),hora:hm(d),sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),tipo:T.tipoDef,equipo:'',p1:'',p2:'',q1:'',q2:'',realizado:SES?SES.nombre:'',realizadoCI:SES?SES.ci:'',revisado:'',revisadoCI:'',revisadoFecha:'',obs:'',it:{},sync:false}}
 function suggestions(key,extra){const h=hist();return[...new Set([...(extra||[]),...h.map(r=>r[key]).filter(Boolean)])].slice(0,60)}
@@ -705,7 +707,7 @@ async function importInventario(file){
   const e=await api('equipos');store.set('chq_equipos',e.equipos);
   render(true);
   alert('Inventario cargado.\nAgregados: '+ag+'\nActualizados: '+ac+'\nTotal en el sistema: '+e.equipos.length+(om.length?'\n\nNo se cargaron '+om.length+' fila(s):\n'+om.slice(0,10).join('\n')+(om.length>10?'\n...':''):''));
- }catch(e){console.error(e);toast(e&&e.msg?e.msg:'No se pudo leer o cargar el archivo')}
+ }catch(e){console.error(e);toast(e&&(e.msg||e.code)?errMsg(e):'No se pudo leer o cargar el archivo')}
 }
 
 /* ---------- Alertas de falla ---------- */
@@ -968,7 +970,11 @@ async function testServer(){
  toast('Probando...');
  try{
   const r=await fetch(url),tx=await r.text();
-  if(/Servidor de chequeos activo/.test(tx))alert('Conexión correcta: el servidor responde.\nAhora escribe tu cédula y PIN.');
+  if(/Servidor de chequeos activo/.test(tx)){
+   const v=(/version (\S+)/.exec(tx)||[])[1];
+   if(v===SERVER_VERSION)alert('Conexión correcta: el servidor responde y está actualizado.\nAhora escribe tu cédula y PIN.');
+   else alert('El servidor responde, pero está DESACTUALIZADO'+(v?' (versión '+v+')':'')+'.\n\nEn Apps Script pega el Codigo.gs nuevo y publica: Implementar > Gestionar implementaciones > lápiz > Versión: Nueva versión > Implementar.');
+  }
   else alert('La dirección responde, pero no es el servidor de chequeos.\nRevisa que sea la de tu implementación.');
  }catch(e){
   alert(navigator.onLine===false?'Este teléfono no tiene internet.':'No se pudo conectar con el servidor.\n\n1) La dirección debe terminar en /exec.\n2) En Apps Script: Implementar > Gestionar implementaciones > "Quién tiene acceso" = Cualquier persona.\n3) Si cambiaste el código, publica una Nueva versión.');
@@ -984,6 +990,7 @@ async function doLogin(){
   const j=await api('login',{_ses:{ci,pin}});
   if(store.get('chq_lastci','')!==j.user.ci){['chq_since','chq_asince'].forEach(k=>store.set(k,0));store.set('chq_aseen',[]);store.set('chq_ainit',false);store.set('chq_lastci',j.user.ci)}
   SES={ci:j.user.ci,pin,nombre:j.user.nombre,rol:j.user.rol};store.set('chq_ses',SES);store.set('chq_equipos',j.equipos||[]);
+  if(j.version!==SERVER_VERSION)setTimeout(()=>alert('El servidor de Google está desactualizado'+(j.version?' (versión '+j.version+')':'')+'.\nAlgunas funciones nuevas (alertas, inventario) no van a funcionar.\n\nSolución: en Apps Script pega el Codigo.gs nuevo y publica una "Nueva versión" en Implementar > Gestionar implementaciones.'),400);
   S.view='home';S.filtro=esSup()?'pend':'all';render();syncPending(true);startPoll();
   try{if(esSup()&&'Notification' in window&&Notification.permission==='default')Notification.requestPermission().then(()=>render(true))}catch(_){}
  }catch(e){toast(errMsg(e))}
