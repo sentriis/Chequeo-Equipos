@@ -79,7 +79,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .th{position:relative;width:96px;height:96px}
 .th img{width:100%;height:100%;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
-.th button{position:absolute;top:-6px;right:-6px;width:28px;height:28px;border-radius:50%;border:0;background:var(--bad);color:#fff;font-size:18px;line-height:1}
+.th button{position:absolute;top:-6px;right:-6px;width:6px;height:6px;border-radius:10%;border:0;background:var(--bad);color:#fff;font-size:18px;line-height:1}
 .pic{width:100%;border-radius:6px;border:1px solid var(--line);margin-bottom:8px}
 .eq{background:#fff;border:1px solid var(--line);border-left:6px solid var(--navy);border-radius:8px;padding:10px 12px;margin:8px 0}
 .eqh{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:2px}
@@ -113,9 +113,9 @@ const TYPES={
   p:['CONDUCTOR:','C.I:'],q:['LICENCIA','F. VENCIMIENTO:'],qd:[1],signR:'REVISADO POR:',from:'sup',L:VL,R:VR},
  veh:{name:'Vehículos',sub:'Camionetas y automóviles',sheet:'VEHICULOS',tipos:['Camioneta','Automóvil','Otro'],
   p:['CONDUCTOR:','C.I:'],q:['LICENCIA:','F. VENCIMIENTO:'],qd:[1],signR:'CONDUCTOR:',from:'p',L:VL,R:VR},
- tara:{name:'Taras',sub:'Chasis y plataformas (ver supuesto)',sheet:'TARAS',tipos:['Tara'],
+ tara:{name:'Taras',sub:'Chasis y plataformas',sheet:'TARAS',tipos:['Tara'],
   p:['RESPONSABLE:','C.I:'],q:['PLACA / SERIAL:','TIPO DE TARA:'],qd:[],signR:'REVISADO POR:',from:'sup',
-  L:['FRENOS','NEUMATICOS (ESTADO Y PRESION)','SUSPENSION','PATAS DE APOYO / TREN DE ATERRIZAJE','QUINTA RUEDA / PERNO REY','TWIST LOCKS (SEGUROS DE CONTENEDOR)','ESTRUCTURA Y SOLDADURAS DEL CHASIS','LUZ FRENO','LUCES DE POSICION','LUCES DE EMERGENCIA','CONEXION ELECTRICA (CABLE Y TOMA)'],
+  L:['FRENOS','NEUMATICOS (ESTADO Y PRESION)','SUSPENSION','PATAS DE APOYO','QUINTA RUEDA / PERNO REY','TWIST LOCKS (SEGUROS DE CONTENEDOR)','ESTRUCTURA Y SOLDADURAS DEL CHASIS','LUZ FRENO','LUCES DE POSICION','LUCES DE EMERGENCIA','CONEXION ELECTRICA (CABLE Y TOMA)'],
   R:['MANGUERAS Y ACOPLES DE AIRE','SISTEMA ABS / VALVULAS DE FRENO','GUARDAFANGOS Y PROTECCIONES','CINTAS REFLECTIVAS','PLACA Y DOCUMENTOS','ORDEN Y LIMPIEZA']},
  gset:{name:'Genset',sub:'Generadores para contenedores',sheet:'GENSET',tipos:['Genset'],
   p:['RESPONSABLE:','C.I:'],q:['HOROMETRO (H):','COMBUSTIBLE (%):'],qd:[],qn:[0,1],signR:'REVISADO POR:',from:'sup',
