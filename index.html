@@ -132,7 +132,7 @@ Object.values(TYPES).forEach(T=>{T.tipoDef=T.tipos[0]});
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const store={get(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){toast('No se pudo guardar en el teléfono')}}};
-let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2800)}
+let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),Math.max(2800,String(m).length*60))}
 const p2=n=>String(n).padStart(2,'0');
 const ymd=d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
 const hm=d=>p2(d.getHours())+':'+p2(d.getMinutes());
@@ -176,7 +176,12 @@ async function api(action,data){
  if(!j.ok){if(j.code==='auth'&&SES&&!(data&&data._ses)){SES=null;store.set('chq_ses',null);S.view='login';render()}throw j}
  return j;
 }
-function errMsg(e){return e&&e.msg?e.msg:e&&e.code==='red'?'Sin conexión a internet':e&&e.code==='nourl'?'Falta la dirección del servidor':'No se pudo conectar con el servidor'}
+function errMsg(e){
+ if(e&&e.msg)return e.msg;
+ if(e&&e.code==='nourl')return 'Falta la dirección del servidor';
+ if(e&&e.code==='red')return navigator.onLine===false?'Este teléfono no tiene internet':'No se pudo conectar con el servidor. Revisa que la dirección termine en /exec y que la implementación esté en "Cualquier persona". Usa "Probar conexión".';
+ return 'El servidor respondió algo inesperado. Revisa que la dirección sea la de tu implementación (termina en /exec).';
+}
 function saveHist(h){store.set('chq_hist',h.sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora)).slice(0,500))}
 const pendientes=()=>hist().filter(r=>r.sync===false&&r.realizadoCI===(SES&&SES.ci));
 async function syncPending(silent){
@@ -231,7 +236,7 @@ function vLogin(){
  const needUrl=!apiUrl();
  return `<div class="login"><img src="${LOGO}" alt="Intershipping Terminal Services">
  <h1>Chequeo diario</h1>
- ${needUrl?'<label>Dirección del servidor (la da tu administrador)</label><input id="lUrl" placeholder="https://script.google.com/.../exec" autocapitalize="off">':''}
+ <details ${needUrl?'open':''} style="margin-bottom:6px"><summary style="font-size:14px;color:var(--mute)">Dirección del servidor</summary><input id="lUrl" value="${esc(apiUrl())}" placeholder="https://script.google.com/macros/s/.../exec" autocapitalize="off" autocomplete="off" style="margin-top:6px"><button type="button" class="mini" style="margin-top:8px" data-act="testsrv">Probar conexión</button></details>
  <label>Cédula</label><input id="lCi" inputmode="numeric" autocomplete="username" placeholder="Solo números">
  <label>PIN</label><input id="lPin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="4 a 6 números">
  <button class="btn pri" style="margin-top:16px;width:100%" data-act="login">Entrar</button>
@@ -358,7 +363,8 @@ document.addEventListener('change',async e=>{
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-act]');if(!b)return;
  const a=b.dataset.act,r=S.rec;
- if(a==='inv'){S.invq='';S.view='inv';render()}
+ if(a==='testsrv')testServer();
+ else if(a==='inv'){S.invq='';S.view='inv';render()}
  else if(a==='invf')$('#invfile').click();
  else if(a==='invx')exportInv(false);
  else if(a==='invt')exportInv(true);
@@ -955,8 +961,22 @@ function buildAlertPdf(a,photos){
  return d.output('blob');
 }
 
+async function testServer(){
+ const el=$('#lUrl'),url=((el&&el.value)||apiUrl()||'').trim();
+ if(!url){toast('Escribe la dirección del servidor');return}
+ if(!/\/exec$/.test(url)){alert('La dirección debe terminar en /exec.\nCopia la que aparece al implementar como "Aplicación web".');return}
+ toast('Probando...');
+ try{
+  const r=await fetch(url),tx=await r.text();
+  if(/Servidor de chequeos activo/.test(tx))alert('Conexión correcta: el servidor responde.\nAhora escribe tu cédula y PIN.');
+  else alert('La dirección responde, pero no es el servidor de chequeos.\nRevisa que sea la de tu implementación.');
+ }catch(e){
+  alert(navigator.onLine===false?'Este teléfono no tiene internet.':'No se pudo conectar con el servidor.\n\n1) La dirección debe terminar en /exec.\n2) En Apps Script: Implementar > Gestionar implementaciones > "Quién tiene acceso" = Cualquier persona.\n3) Si cambiaste el código, publica una Nueva versión.');
+ }
+}
 async function doLogin(){
- const urlEl=$('#lUrl');if(urlEl&&urlEl.value.trim())store.set('api_url',urlEl.value.trim());
+ const urlEl=$('#lUrl');
+ if(urlEl){const u=urlEl.value.trim();if(u&&!/\/exec$/.test(u)){toast('La dirección del servidor debe terminar en /exec');return}store.set('api_url',u)}
  const ci=$('#lCi').value.trim(),pin=$('#lPin').value.trim();
  if(!ci||!pin){toast('Escribe tu cédula y tu PIN');return}
  toast('Entrando...');
