@@ -1,5 +1,5 @@
 // Service worker: guarda la app y las librerías para uso sin señal
-const V='chequeo-v7';
+const V='chequeo-v9';
 const FILES=['./','./index.html','./manifest.json','./icon-192.png','./icon-512.png',
  'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'];

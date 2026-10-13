@@ -79,7 +79,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .th{position:relative;width:96px;height:96px}
 .th img{width:100%;height:100%;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
-.th button{position:absolute;top:-6px;right:-6px;width:6px;height:6px;border-radius:10%;border:0;background:var(--bad);color:#fff;font-size:18px;line-height:1}
+.th button{position:absolute;top:-6px;right:-6px;width:28px;height:28px;border-radius:50%;border:0;background:var(--bad);color:#fff;font-size:18px;line-height:1}
 .pic{width:100%;border-radius:6px;border:1px solid var(--line);margin-bottom:8px}
 .eq{background:#fff;border:1px solid var(--line);border-left:6px solid var(--navy);border-radius:8px;padding:10px 12px;margin:8px 0}
 .eqh{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:2px}
@@ -106,16 +106,16 @@ const VR=['FAROS DE NEBLINA','PITO DE RETROCESO','INDICADORES DE CABINA','RETROV
 const GEN_L=['NIVEL ACEITE MOTOR','NIVEL REFRIGERANTE','NIVEL DE COMBUSTIBLE','FUGAS (ACEITE / COMBUSTIBLE / AGUA)','BATERIA Y BORNES','CORREAS','FILTRO DE AIRE'];
 const TYPES={
  maq:{name:'Maquinaria',sub:'Reach stacker, montacargas, empty side',sheet:'MAQUINARIA',tipos:['Reach stacker','Montacargas','Empty side','Otro'],
-  p:['OPERADOR:','C.I:'],q:['CERTIFICADO','F. VENCIMIENTO:'],qd:[0,1],signR:'OPERADOR:',from:'p',
+  p:['OPERADOR:','C.I:'],q:['CERTIFICADO','F. VENCIMIENTO:'],qd:[0,1],signR:'OPERADOR:',from:'p',opReq:1,
   L:['FRENOS','NEUMATICOS','TREN DE DIRECCION','NIVEL ACEITE MOTOR','NIVEL REFRIGERANTE','NIVEL DE ACEITE HIDRAULICO','LUZ FRENO','LUCES ALTAS','LUCES BAJAS','LUCES DE TORRE/BOOM Y COCTELERAS','NIVEL DE AdBlu'],
   R:['LUCES DE SEMAFORO','PITO DE RETROCESO','INDICADORES DE TABLEROS','ESPEJOS (INTERNO Y EXTERNO)','ESTADO DEL PARABRISAS','ESTADO DEL CINTURON DE SEGURIDAD','EXTINTOR','ASIENTO','ESCALERAS Y PASAMANOS','ESTADO DEL LIMPIA PARABRISAS']},
  chuto:{name:'Chutos',sub:'Cabezales de transporte',sheet:'CHUTOS',tipos:['Chuto'],
-  p:['CONDUCTOR:','C.I:'],q:['LICENCIA','F. VENCIMIENTO:'],qd:[1],signR:'REVISADO POR:',from:'sup',L:VL,R:VR},
+  p:['CONDUCTOR:','C.I:'],q:['LICENCIA','F. VENCIMIENTO:'],qd:[1],signR:'REVISADO POR:',from:'sup',opReq:1,L:VL,R:VR},
  veh:{name:'Vehículos',sub:'Camionetas y automóviles',sheet:'VEHICULOS',tipos:['Camioneta','Automóvil','Otro'],
-  p:['CONDUCTOR:','C.I:'],q:['LICENCIA:','F. VENCIMIENTO:'],qd:[1],signR:'CONDUCTOR:',from:'p',L:VL,R:VR},
- tara:{name:'Taras',sub:'Chasis y plataformas',sheet:'TARAS',tipos:['Tara'],
+  p:['CONDUCTOR:','C.I:'],q:['LICENCIA:','F. VENCIMIENTO:'],qd:[1],signR:'CONDUCTOR:',from:'p',opReq:1,L:VL,R:VR},
+ tara:{name:'Taras',sub:'Chasis y plataformas (ver supuesto)',sheet:'TARAS',tipos:['Tara'],
   p:['RESPONSABLE:','C.I:'],q:['PLACA / SERIAL:','TIPO DE TARA:'],qd:[],signR:'REVISADO POR:',from:'sup',
-  L:['FRENOS','NEUMATICOS (ESTADO Y PRESION)','SUSPENSION','PATAS DE APOYO','QUINTA RUEDA / PERNO REY','TWIST LOCKS (SEGUROS DE CONTENEDOR)','ESTRUCTURA Y SOLDADURAS DEL CHASIS','LUZ FRENO','LUCES DE POSICION','LUCES DE EMERGENCIA','CONEXION ELECTRICA (CABLE Y TOMA)'],
+  L:['FRENOS','NEUMATICOS (ESTADO Y PRESION)','SUSPENSION','PATAS DE APOYO / TREN DE ATERRIZAJE','QUINTA RUEDA / PERNO REY','TWIST LOCKS (SEGUROS DE CONTENEDOR)','ESTRUCTURA Y SOLDADURAS DEL CHASIS','LUZ FRENO','LUCES DE POSICION','LUCES DE EMERGENCIA','CONEXION ELECTRICA (CABLE Y TOMA)'],
   R:['MANGUERAS Y ACOPLES DE AIRE','SISTEMA ABS / VALVULAS DE FRENO','GUARDAFANGOS Y PROTECCIONES','CINTAS REFLECTIVAS','PLACA Y DOCUMENTOS','ORDEN Y LIMPIEZA']},
  gset:{name:'Genset',sub:'Generadores para contenedores',sheet:'GENSET',tipos:['Genset'],
   p:['RESPONSABLE:','C.I:'],q:['HOROMETRO (H):','COMBUSTIBLE (%):'],qd:[],qn:[0,1],signR:'REVISADO POR:',from:'sup',
@@ -140,7 +140,7 @@ const fd=s=>{if(!s)return '';const m=/^(\d{4})-(\d\d)-(\d\d)$/.exec(s);return m?
 const itemsOf=T=>[...T.L.map((t,i)=>({k:'L'+i,t})),...T.R.map((t,i)=>({k:'R'+i,t}))];
 const stats=r=>{const T=TYPES[r.type],it=itemsOf(T);let c=0,n=0,a=0;it.forEach(x=>{const v=(r.it[x.k]||{}).v;if(v==='C')c++;else if(v==='N')n++;else if(v==='A')a++});return{c,n,a,done:c+n+a,total:it.length}};
 const signName=r=>TYPES[r.type].from==='p'?r.p1:r.revisado;
-function obsText(r){const T=TYPES[r.type];const lines=[];itemsOf(T).forEach(x=>{const o=r.it[x.k]||{};if(o.v==='N')lines.push('NO CUMPLE - '+x.t+(o.note?': '+o.note:''))});if(r.obs&&r.obs.trim())lines.push(r.obs.trim());return lines.join('\n')}
+function obsText(r){const T=TYPES[r.type];const lines=[];if(r.opEstado==='ausente')lines.push('SIN '+opLbl(T).toUpperCase()+' PRESENTE (el motivo está en las observaciones).');itemsOf(T).forEach(x=>{const o=r.it[x.k]||{};if(o.v==='N')lines.push('NO CUMPLE - '+x.t+(o.note?': '+o.note:''))});if(r.obs&&r.obs.trim())lines.push(r.obs.trim());return lines.join('\n')}
 function fileBase(r){const T=TYPES[r.type];return ('CHEQUEO_'+T.sheet.replace(/ /g,'_')+'_'+(r.equipo||'SIN_ID')+'_'+r.fecha).replace(/[^A-Za-z0-9_\-]/g,'')}
 function msgText(r){
  const T=TYPES[r.type],s=stats(r);
@@ -150,7 +150,7 @@ function msgText(r){
  if(r.p1)m+=T.p[0].replace(':','')+': '+r.p1+(r.p2?' (C.I '+r.p2+')':'')+'\n';
  if(r.q1)m+=T.q[0].replace(':','')+': '+r.q1+'\n';
  if(r.q2)m+=T.q[1].replace(':','')+': '+(T.qd.includes(1)?fd(r.q2):r.q2)+'\n';
- m+='Realizado por: '+(r.realizado||'-')+'\n';if(r.revisado)m+='Revisado por: '+r.revisado+'\n';
+ m+='Realizado por: '+(r.realizado||'-')+'\n';m+=opLinea(r);if(r.revisado)m+='Revisado por: '+r.revisado+'\n';
  m+='\nResultado: '+s.c+' cumple, '+s.n+' NO cumple, '+s.a+' N/A\n';
  if(s.n){m+='\n*PUNTOS QUE NO CUMPLEN:*\n';itemsOf(T).forEach(x=>{const o=r.it[x.k]||{};if(o.v==='N')m+='- '+x.t+(o.note?': '+o.note:'')+'\n'});m+='\nEquipo con fallas: no operar hasta que el supervisor autorice.\n'}
  else m+='Sin novedades.\n';
@@ -193,7 +193,7 @@ async function syncPending(silent){
   if(pend.length){
    const j=await api('sync',{records:pend.map(r=>Object.assign({},r))});
    const h=hist();
-   h.forEach(r=>{if(j.guardados.includes(String(r.id)))r.sync=true});
+   h.forEach(r=>{if(j.guardados.includes(String(r.id))){r.sync=true;const fid=j.fotos&&j.fotos[String(r.id)];if(fid){r.opFotoId=fid;r.opFoto=''}}});   // la foto ya está en el servidor: se libera espacio en el teléfono
    saveHist(h);
    if(j.rechazados.length&&!silent)toast(j.rechazados.length+' chequeo(s) no se aceptaron: '+j.rechazados[0].motivo);
   }
@@ -210,9 +210,9 @@ async function syncPending(silent){
 }
 window.addEventListener('online',()=>syncPending(true));
 const hist=()=>store.get('chq_hist',[]);
-const SERVER_VERSION='2026-10-11-e';   // debe coincidir con VERSION en Codigo.gs
+const SERVER_VERSION='2026-10-14-h';   // debe coincidir con VERSION en Codigo.gs
 const API_URL='';   // <- Pega aquí la dirección del servidor (termina en /exec). Si la dejas vacía, la app la pedirá al entrar.
-function newRec(type){const d=new Date(),T=TYPES[type];return{id:Date.now().toString(36),type,fecha:ymd(d),hora:hm(d),sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),tipo:T.tipoDef,equipo:'',p1:'',p2:'',q1:'',q2:'',realizado:SES?SES.nombre:'',realizadoCI:SES?SES.ci:'',revisado:'',revisadoCI:'',revisadoFecha:'',obs:'',it:{},sync:false}}
+function newRec(type){const d=new Date(),T=TYPES[type];return{id:Date.now().toString(36),type,fecha:ymd(d),hora:hm(d),sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),tipo:T.tipoDef,equipo:'',p1:'',p2:'',q1:'',q2:'',realizado:SES?SES.nombre:'',realizadoCI:SES?SES.ci:'',revisado:'',revisadoCI:'',revisadoFecha:'',obs:'',it:{},sync:false,opEstado:'',opFoto:'',opFotoId:'',opTs:0,opHora:'',opGeo:null,opW:0,opH:0}}
 function suggestions(key,extra){const h=hist();return[...new Set([...(extra||[]),...h.map(r=>r[key]).filter(Boolean)])].slice(0,60)}
 const equiposDe=type=>store.get('chq_equipos',[]).filter(e=>e.tipo===type||e.tipo===TYPES[type].sheet||e.tipo===TYPES[type].name).map(e=>e.id)
 const dl=(id,arr)=>'<datalist id="'+id+'">'+arr.map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist>';
@@ -233,6 +233,7 @@ function render(keep){
  if(!keep)window.scrollTo(0,0);
  if(S.view==='form')updateProg();
  if(S.view==='aresult')loadAPhotos();
+ if(S.view==='result')loadOpFoto();
 }
 function vLogin(){
  const needUrl=!apiUrl();
@@ -263,7 +264,7 @@ function vHome(){
   <div class="tiles">${Object.entries(TYPES).map(([k,T])=>`<button class="tile" data-act="new" data-t="${k}">${esc(T.name)}<small>${esc(T.sub)}</small></button>`).join('')}</div>
   <h2>${esSup()?'Chequeos':'Mis chequeos'}</h2>
   ${esSup()?`<div class="chips"><button class="chip ${S.filtro==='pend'?'on':''}" data-act="filtro" data-f="pend">Por revisar (${nRev})</button><button class="chip ${S.filtro==='all'?'on':''}" data-act="filtro" data-f="all">Todos</button><button class="chip ${S.filtro==='mine'?'on':''}" data-act="filtro" data-f="mine">Míos</button></div>`:''}
-  ${list.length?list.map(r=>{const s=stats(r);const own=r.realizadoCI===SES.ci;return `<button class="hist" data-act="open" data-id="${r.id}"><span><b>${esc(r.equipo||'Sin ID')}</b> · ${esc(TYPES[r.type].name)}<small>${fd(r.fecha)} ${r.hora} · ${esc(r.sede)}${esSup()&&!own?' · '+esc(r.realizado):''}</small></span><span style="display:grid;gap:4px;justify-items:end"><span class="tag ${s.n?'bad':''}">${s.n?s.n+' falla'+(s.n>1?'s':''):'Sin fallas'}</span>${r.sync===false?'<span class="tag warn">Sin enviar</span>':(r.revisado?'<span class="tag grey">Revisado</span>':'')}</span></button>`}).join(''):'<div class="empty">No hay chequeos para mostrar.</div>'}
+  ${list.length?list.map(r=>{const s=stats(r);const own=r.realizadoCI===SES.ci;return `<button class="hist" data-act="open" data-id="${r.id}"><span><b>${esc(r.equipo||'Sin ID')}</b> · ${esc(TYPES[r.type].name)}<small>${fd(r.fecha)} ${r.hora} · ${esc(r.sede)}${esSup()&&!own?' · '+esc(r.realizado):''}</small></span><span style="display:grid;gap:4px;justify-items:end"><span class="tag ${s.n?'bad':''}">${s.n?s.n+' falla'+(s.n>1?'s':''):'Sin fallas'}</span>${r.sync===false?'<span class="tag warn">Sin enviar</span>':(r.revisado?'<span class="tag grey">Revisado</span>':'')}${r.opEstado==='ausente'?'<span class="tag warn">Sin operador</span>':r.opEstado==='sinpin'?'<span class="tag warn">Firma sin PIN</span>':''}</span></button>`}).join(''):'<div class="empty">No hay chequeos para mostrar.</div>'}
   ${alertSection()}
   <h2>Cuenta</h2>
   <div class="stack">
@@ -320,6 +321,8 @@ function vForm(){
   <div id="items">${itemsOf(T).map(x=>itemHtml(x,r)).join('')}</div>
   <h2>Observaciones generales</h2>
   <textarea data-f="obs" placeholder="Opcional">${esc(r.obs)}</textarea>
+  ${opCard(r)}
+  <input type="file" id="opFile" accept="image/*" capture="environment" hidden>
  </main>
  <div class="dock"><button class="btn pri" data-act="save">Guardar y compartir</button></div>`;
 }
@@ -335,6 +338,7 @@ function vResult(){
   ${s.n?'<div class="alert">Este equipo tiene fallas. No lo operes hasta que el supervisor autorice.</div>':''}
   <div class="card"><pre style="white-space:pre-wrap;font:14px/1.4 inherit;margin:0;font-family:inherit">${esc(msgText(r))}</pre></div>
   ${(()=>{const e=findEq(r.equipo);return e?'<h2>Datos del equipo</h2>'+eqCard(e):''})()}
+  ${opEvid(r)}
   <h2>Enviar</h2>
   <div class="stack">
    <div class="row"><button class="btn wa" data-act="wa">WhatsApp</button><button class="btn tg" data-act="tg">Telegram</button></div>
@@ -359,13 +363,26 @@ document.addEventListener('change',async e=>{
  if(e.target.dataset&&e.target.dataset.f==='equipo'){eqLookupCheck(true);return}
  if(e.target.dataset&&e.target.dataset.a==='equipo'){eqLookupAlert(true);return}
  if(e.target.id==='invfile'){const f=e.target.files[0];e.target.value='';if(f)await importInventario(f);return}
- if(e.target.id==='aFoto'){const a=S.alert;const files=[...e.target.files];e.target.value='';for(const f of files){if(a.fotos.length>=3){toast('Máximo 3 fotos');break}try{a.fotos.push(await compress(f))}catch(_){toast('No se pudo leer la foto')}}$('#thumbs').innerHTML=thumbsHtml();return}
+ if(e.target.id==='opFile'){const f=e.target.files[0];e.target.value='';if(f)await processOpPhoto(f);return}
+ if(e.target.id==='aFoto'||e.target.id==='aFotoG'){
+  const a=S.alert,cam=e.target.id==='aFoto',files=[...e.target.files];e.target.value='';
+  if(files.length)toast('Procesando foto...');
+  const geo=cam?await getGeo():null;
+  for(const f of files){
+   if(a.fotos.length>=5){toast('Máximo 5 fotos');break}
+   try{const ts=cam?Date.now():(f.lastModified||Date.now());a.fotos.push(await compress(f,{ts,geo,l2:(SES?SES.nombre:'')+' · '+(a.equipo||'sin ID')+(cam?'':' · foto de galería')}))}catch(_){toast('No se pudo leer la foto')}
+  }
+  $('#thumbs').innerHTML=thumbsHtml();return
+ }
  if(e.target.id==='impf'){const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);if(!Array.isArray(d))throw 0;const cur=hist(),ids=new Set(cur.map(x=>x.id));const add=d.filter(x=>x&&x.id&&TYPES[x.type]&&!ids.has(x.id));store.set('chq_hist',[...cur,...add].sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora)).slice(0,400));toast(add.length+' chequeos cargados');render()}catch(_){toast('El archivo no es una copia válida')}};rd.readAsText(f)}
 });
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-act]');if(!b)return;
  const a=b.dataset.act,r=S.rec;
- if(a==='testsrv')testServer();
+ if(a==='opfoto'){getGeo();$('#opFile').click()}
+ else if(a==='opquitar'){r.opEstado='';r.opFoto='';r.opTs=0;r.opHora='';r.opGeo=null;refreshOp()}
+ else if(a==='opausente'){r.opEstado='ausente';r.opFoto='';r.opTs=0;r.opHora='';r.opGeo=null;refreshOp();const o=document.querySelector('[data-f=obs]');if(o){o.placeholder='Obligatorio: explica por qué no hay '+opLbl(TYPES[r.type])+' presente';o.scrollIntoView({block:'center'});o.focus()}}
+ else if(a==='testsrv')testServer();
  else if(a==='inv'){S.invq='';S.view='inv';render()}
  else if(a==='invf')$('#invfile').click();
  else if(a==='invx')exportInv(false);
@@ -375,7 +392,8 @@ document.addEventListener('click',async e=>{
  else if(a==='anew'){S.alert=newAlert();S.view='afalla';render()}
  else if(a==='c2a'){const al=newAlert(),T=TYPES[r.type];al.type=r.type;al.equipo=r.equipo;al.sede=r.sede;al.patio=r.patio;al.desc='Falla detectada en el chequeo diario del '+fd(r.fecha)+':\n'+itemsOf(T).filter(x=>(r.it[x.k]||{}).v==='N').map(x=>'- '+x.t+((r.it[x.k]||{}).note?': '+r.it[x.k].note:'')).join('\n');S.alert=al;S.view='afalla';render()}
  else if(a==='grav'){S.alert.grav=b.dataset.v;document.querySelectorAll('.gv').forEach(x=>x.classList.toggle('on',x.dataset.v===S.alert.grav))}
- else if(a==='afoto')$('#aFoto').click();
+ else if(a==='afoto'){getGeo();$('#aFoto').click()}
+ else if(a==='afotog')$('#aFotoG').click();
  else if(a==='rmfoto'){S.alert.fotos.splice(+b.dataset.i,1);$('#thumbs').innerHTML=thumbsHtml()}
  else if(a==='asave')saveAlert();
  else if(a==='aopen'){S.alert=alerts().find(x=>x.id===b.dataset.id);if(S.alert){S.view='aresult';render()}}
@@ -426,6 +444,9 @@ function save(){
  if(s.done<s.total){toast('Faltan '+(s.total-s.done)+' puntos por marcar');const first=itemsOf(T).find(x=>!(r.it[x.k]||{}).v);const el=first&&document.querySelector('.item[data-k="'+first.k+'"]');el&&el.scrollIntoView({block:'center'});return}
  const miss=itemsOf(T).find(x=>{const o=r.it[x.k]||{};return o.v==='N'&&!(o.note||'').trim()});
  if(miss){toast('Escribe la falla en: '+miss.t);const el=document.querySelector('textarea[data-note="'+miss.k+'"]');el&&el.scrollIntoView({block:'center'});el&&el.focus();return}
+ if(T.opReq&&!r.opEstado){toast('Falta la presencia del '+opLbl(T)+': toma la foto o indica que no hay');const c=$('#opcard');c&&c.scrollIntoView({block:'center'});return}
+ if(r.opEstado==='foto'&&!r.opFoto&&!r.opFotoId){toast('Falta la foto del '+opLbl(T));return}
+ if(r.opEstado==='ausente'&&(r.obs||'').trim().length<8){toast('Escribe en Observaciones por qué no hay '+opLbl(T)+' presente');const o=document.querySelector('[data-f=obs]');o&&o.scrollIntoView({block:'center'});o&&o.focus();return}
  r.equipo=r.equipo.trim();
  store.set('last_sede',r.sede);store.set('last_patio',r.patio);r.sync=false;
  const h=hist().filter(x=>x.id!==r.id);h.unshift(r);saveHist(h);
@@ -440,7 +461,7 @@ async function exportFile(r,kind){
   if(kind==='xlsx'&&!window.ExcelJS){toast('Falta cargar la librería de Excel. Conéctate a internet una vez.');return}
   if(kind==='pdf'&&!window.jspdf){toast('Falta cargar la librería de PDF. Conéctate a internet una vez.');return}
   toast('Preparando '+(kind==='xlsx'?'Excel':'PDF')+'...');
-  const blob=kind==='xlsx'?await buildXlsx(r):buildPdf(r),name=fileBase(r)+'.'+kind;
+  const rr=await withOpFoto(r),blob=kind==='xlsx'?await buildXlsx(rr):buildPdf(rr),name=fileBase(r)+'.'+kind;
   const file=new File([blob],name,{type:blob.type});
   if(navigator.canShare&&navigator.canShare({files:[file]})){
    try{await navigator.share({files:[file],title:name});return}catch(e){if(e&&e.name==='AbortError')return}
@@ -510,7 +531,20 @@ async function buildXlsx(r){
   m(rr,1,rr,2,s[0],{bold:true,h:'right',box:true,fill:GREY});m(rr,3,rr,6,s[1],{box:true});
   m(rr,7,rr,8,s[2],{bold:true,h:'right',box:true,fill:GREY});m(rr,9,rr,12,s[3],{box:true});
  });
- ws.pageSetup.printArea='A1:L'+(row+2);
+ let last=row+2;
+ if(r.opEstado){
+  const ev=row+3;
+  ws.getRow(ev).height=15;m(ev,1,ev,12,'EVIDENCIA DE PRESENCIA DEL '+opLbl(T).toUpperCase(),{bold:true,size:11,h:'center',box:true,fill:GREY});
+  if(r.opEstado==='ausente'){ws.getRow(ev+1).height=30;m(ev+1,1,ev+1,12,opTexto(r),{box:true,bold:true});last=ev+1}
+  else{
+   ws.getRow(ev+1).height=90;
+   m(ev+1,1,ev+1,2,'FOTO:',{bold:true,h:'right',box:true,fill:GREY});m(ev+1,3,ev+1,6,'',{box:true});
+   m(ev+1,7,ev+1,8,'REGISTRO:',{bold:true,h:'right',box:true,fill:GREY});m(ev+1,9,ev+1,12,opTexto(r),{box:true,top:true,size:10});
+   if(r._opimg){const p=r._opimg,id=wb.addImage({base64:p.d,extension:'jpeg'}),sc=Math.min(240/p.w,112/p.h);ws.addImage(id,{tl:{col:2.1,row:ev+0.05},ext:{width:Math.round(p.w*sc),height:Math.round(p.h*sc)}})}
+   last=ev+1;
+  }
+ }
+ ws.pageSetup.printArea='A1:L'+(last+1);
  const buf=await wb.xlsx.writeBuffer();
  return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
@@ -570,6 +604,17 @@ function buildPdf(r){
   cell(6,7,y,7.5,s[2],{bold:true,size:9,align:'right',box:true,fill:GR});cell(8,11,y,7.5,s[3],{size:9,box:true});
   y+=7.5;
  });
+ if(r.opEstado){
+  y+=2;
+  cell(0,11,y,5,'EVIDENCIA DE PRESENCIA DEL '+opLbl(T).toUpperCase(),{bold:true,size:9,align:'center',box:true,fill:GR});y+=5;
+  if(r.opEstado==='ausente'){cell(0,11,y,8,opTexto(r),{bold:true,size:9,box:true});y+=8}
+  else{
+   cell(0,1,y,40,'FOTO:',{bold:true,size:9,align:'right',box:true,fill:GR});cell(2,5,y,40,'',{box:true});
+   cell(6,7,y,40,'REGISTRO:',{bold:true,size:9,align:'right',box:true,fill:GR});cell(8,11,y,40,opTexto(r),{size:8,box:true,top:true});
+   if(r._opimg){const p=r._opimg,w=cx[6]-cx[2]-2,h=38,sc=Math.min(w/p.w,h/p.h);d.addImage(p.d,'JPEG',cx[2]+1,y+1,p.w*sc,p.h*sc)}
+   y+=40;
+  }
+ }
  return d.output('blob');
 }
 
@@ -756,10 +801,12 @@ function vAFalla(){
  <div class="gravs">${Object.entries(GRAV).map(([k,g])=>`<button type="button" class="gv ${a.grav===k?'on':''}" data-act="grav" data-v="${k}"><b>${g.n}</b><small>${g.d}</small></button>`).join('')}</div>
  <h2>¿Qué pasó? *</h2>
  <textarea data-a="desc" placeholder="Describe la falla: qué se ve, qué ruido hace, cuándo empezó...">${esc(a.desc)}</textarea>
- <h2>Fotos (hasta 3)</h2>
+ <h2>Fotos (hasta 5)</h2>
  <div id="thumbs" class="thumbs">${thumbsHtml()}</div>
- <button type="button" class="btn" style="width:100%" data-act="afoto">Tomar o elegir foto</button>
- <input type="file" id="aFoto" accept="image/*" multiple hidden>
+ <div class="row"><button type="button" class="btn pri" data-act="afoto">Tomar foto</button><button type="button" class="btn" data-act="afotog">De la galería</button></div>
+ <p style="margin:6px 0 0;font-size:13px;color:var(--mute)">Las fotos tomadas con la cámara salen con fecha, hora y ubicación.</p>
+ <input type="file" id="aFoto" accept="image/*" capture="environment" hidden>
+ <input type="file" id="aFotoG" accept="image/*" multiple hidden>
  </main><div class="dock"><button class="btn pri" style="background:var(--bad);border-color:var(--bad)" data-act="asave">Guardar y enviar alerta</button></div>`;
 }
 function vAResult(){
@@ -781,7 +828,34 @@ function vAResult(){
  </div></main>`;
 }
 const PH={};
-function compress(file){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),im=new Image();im.onload=()=>{const sc=Math.min(1,800/Math.max(im.width,im.height)),w=Math.round(im.width*sc),h=Math.round(im.height*sc),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(im,0,0,w,h);URL.revokeObjectURL(url);res({d:c.toDataURL('image/jpeg',.6),w,h})};im.onerror=()=>rej(new Error('img'));im.src=url})}
+let GEO=null;
+function getGeo(){
+ if(GEO&&Date.now()-GEO.t<60000)return Promise.resolve(GEO);
+ return new Promise(res=>{
+  if(!navigator.geolocation)return res(null);
+  navigator.geolocation.getCurrentPosition(p=>{GEO={lat:+p.coords.latitude.toFixed(6),lon:+p.coords.longitude.toFixed(6),acc:Math.round(p.coords.accuracy),t:Date.now()};res(GEO)},()=>res(null),{enableHighAccuracy:true,timeout:8000,maximumAge:30000});
+ });
+}
+const geoTxt=g=>g?'Lat '+Number(g.lat).toFixed(5)+'  Lon '+Number(g.lon).toFixed(5)+'  (±'+g.acc+' m)':'Ubicación no disponible';
+// mk = {ts, geo, l2}: si viene, estampa fecha, hora y ubicación en la foto
+function compress(file,mk){
+ return new Promise((res,rej)=>{
+  const url=URL.createObjectURL(file),im=new Image();
+  im.onload=()=>{
+   const sc=Math.min(1,900/Math.max(im.width,im.height)),w=Math.round(im.width*sc),h=Math.round(im.height*sc),c=document.createElement('canvas');
+   c.width=w;c.height=h;const x=c.getContext('2d');x.drawImage(im,0,0,w,h);URL.revokeObjectURL(url);
+   if(mk){
+    const fs=Math.max(12,Math.round(w/34)),lines=[fdt(mk.ts),geoTxt(mk.geo)];if(mk.l2)lines.push(mk.l2);
+    const bh=Math.round(fs*1.35*lines.length+fs*.6);
+    x.fillStyle='rgba(0,0,0,.6)';x.fillRect(0,h-bh,w,bh);
+    x.fillStyle='#fff';x.font='bold '+fs+'px Arial, sans-serif';x.textBaseline='top';
+    lines.forEach((tx,k)=>x.fillText(tx,Math.round(fs*.5),h-bh+Math.round(fs*.3)+Math.round(k*fs*1.35),w-fs));
+   }
+   res({d:c.toDataURL('image/jpeg',.6),w,h});
+  };
+  im.onerror=()=>rej(new Error('img'));im.src=url;
+ });
+}
 function dims(d){return new Promise(res=>{const im=new Image();im.onload=()=>res({d,w:im.width,h:im.height});im.onerror=()=>res({d,w:4,h:3});im.src=d})}
 async function getPhotos(a){
  if(a.fotos&&a.fotos.length)return a.fotos;
@@ -895,6 +969,15 @@ async function buildAlertXlsx(a,photos){
   const id=wb.addImage({base64:p.d,extension:'jpeg'}),sc=Math.min(280/p.w,150/p.h),w=Math.round(p.w*sc),h=Math.round(p.h*sc);
   ws.addImage(id,{tl:{col:c1-1+.1,row:16+.05},ext:{width:w,height:h}});
  });
+ if(photos.length>3){
+  ws.getRow(18).height=120;
+  [[1,6],[7,12]].forEach(([c1,c2],i)=>{
+   m(18,c1,18,c2,'',{box:true});
+   const p=photos[3+i];if(!p)return;
+   const id=wb.addImage({base64:p.d,extension:'jpeg'}),sc=Math.min(430/p.w,150/p.h),w=Math.round(p.w*sc),h=Math.round(p.h*sc);
+   ws.addImage(id,{tl:{col:c1-1+.1,row:17+.05},ext:{width:w,height:h}});
+  });
+ }
  ws.getRow(19).height=15;m(19,1,19,12,'ATENCION Y CIERRE',{bold:true,size:12,h:'center',box:true,fill:GREY});
  m(20,1,20,2,'ATENDIDO POR:',{bold:true,box:true});m(20,3,20,6,a.atiende,{box:true});m(20,7,20,8,'FECHA:',{bold:true,box:true});m(20,9,20,12,fd(a.atiendeFecha),{box:true});
  for(let r=21;r<=23;r++)ws.getRow(r).height=15;
@@ -950,7 +1033,17 @@ function buildAlertPdf(a,photos){
   const w=cx[c2+1]-cx[c1]-2,h=53,sc=Math.min(w/p.w,h/p.h),pw=p.w*sc,ph=p.h*sc;
   d.addImage(p.d,'JPEG',cx[c1]+1+(w-pw)/2,y+1+(h-ph)/2,pw,ph);
  });
- y+=55;y+=2;
+ y+=55;
+ if(photos.length>3){
+  [[0,5],[6,11]].forEach(([c1,c2],i)=>{
+   cell(c1,c2,y,55,'',{box:true});
+   const p=photos[3+i];if(!p)return;
+   const w=cx[c2+1]-cx[c1]-2,h=53,sc=Math.min(w/p.w,h/p.h),pw=p.w*sc,ph=p.h*sc;
+   d.addImage(p.d,'JPEG',cx[c1]+1+(w-pw)/2,y+1+(h-ph)/2,pw,ph);
+  });
+  y+=55;
+ }
+ y+=2;
  cell(0,11,y,5,'ATENCION Y CIERRE',{bold:true,align:'center',box:true,fill:GR});y+=5;
  cell(0,1,y,6,'ATENDIDO POR:',{bold:true,box:true});cell(2,5,y,6,a.atiende,{box:true});cell(6,7,y,6,'FECHA:',{bold:true,box:true});cell(8,11,y,6,fd(a.atiendeFecha),{box:true});y+=6;
  cell(0,11,y,20,a.cierreNota?'CIERRE: '+a.cierreNota:'',{size:9,box:true,top:true});y+=20;
@@ -961,6 +1054,64 @@ function buildAlertPdf(a,photos){
   y+=7.5;
  });
  return d.output('blob');
+}
+
+/* ---------- Presencia del operador (foto con fecha, hora y ubicación) ---------- */
+const opLbl=T=>T.p[0].replace(':','').toLowerCase();
+const fdt=ms=>{const d=new Date(+ms);return p2(d.getDate())+'/'+p2(d.getMonth()+1)+'/'+d.getFullYear()+' '+hm(d)+':'+p2(d.getSeconds())};
+function opTexto(r){
+ if(r.opEstado==='ausente')return 'SIN '+opLbl(TYPES[r.type]).toUpperCase()+' PRESENTE\nMotivo: ver observaciones generales';
+ if(r.opEstado==='foto')return 'Foto del '+opLbl(TYPES[r.type])+' tomada el\n'+(r.opHora||fdt(r.opTs))+'\n'+geoTxt(r.opGeo);
+ return '';
+}
+function opLinea(r){
+ if(r.opEstado==='foto')return 'Presencia: foto del '+opLbl(TYPES[r.type])+' ('+(r.opHora||fdt(r.opTs))+(r.opGeo?', con ubicación':'')+')\n';
+ if(r.opEstado==='ausente')return 'SIN '+opLbl(TYPES[r.type]).toUpperCase()+' PRESENTE (motivo en observaciones)\n';
+ return '';
+}
+function opCard(r){
+ const T=TYPES[r.type],lbl=opLbl(T);let body;
+ if(r.opEstado==='foto'){
+  body=`${r.opFoto?`<img class="pic" src="${r.opFoto}" alt="Foto del ${lbl}">`:''}<div class="eq" style="margin-top:0;border-left-color:var(--ok)"><b>Foto guardada</b><br><span style="color:var(--mute);font-size:14px">${esc(r.opHora||fdt(r.opTs))}<br>${esc(geoTxt(r.opGeo))}</span></div><div class="row" style="margin-top:8px"><button class="mini" data-act="opfoto">Repetir foto</button><button class="mini" data-act="opquitar">Quitar</button></div>`;
+ }else if(r.opEstado==='ausente'){
+  body=`<div class="note" style="margin-top:0">Sin ${lbl} presente. <b>Explica el motivo en "Observaciones generales"</b> (más abajo). Es obligatorio.</div><button class="mini" data-act="opfoto">Mejor tomar la foto del ${lbl}</button>`;
+ }else{
+  body=`<p style="margin:0 0 10px;font-size:14px;color:var(--mute)">Toma una foto del ${lbl} junto al equipo, mientras haces el chequeo. La foto sale con fecha, hora y ubicación.</p><button class="btn pri" style="width:100%" data-act="opfoto">Tomar foto del ${lbl}</button><button class="mini" style="margin-top:8px" data-act="opausente">No hay ${lbl} presente</button>`;
+ }
+ return `<h2>Presencia del ${lbl}${T.opReq?' *':''}</h2><div class="card" id="opcard">${body}</div>`;
+}
+function refreshOp(){const b=$('#opcard');if(b)b.outerHTML=opCard(S.rec).replace(/^<h2>.*?<\/h2>/,'')}
+function opEvid(r){
+ if(!r.opEstado)return '';
+ const lbl=opLbl(TYPES[r.type]);
+ if(r.opEstado==='ausente')return `<h2>Presencia del ${lbl}</h2><div class="note">Sin ${lbl} presente. El motivo está en las observaciones.</div>`;
+ return `<h2>Presencia del ${lbl}</h2><div class="eq" style="border-left-color:var(--ok)"><b>Foto del ${lbl}</b><br><span style="color:var(--mute);font-size:14px">${esc(r.opHora||fdt(r.opTs))}<br>${esc(geoTxt(r.opGeo))}</span><div id="opimg">${r.opFoto?`<img class="pic" src="${r.opFoto}" alt="Foto del ${lbl}" style="margin-top:8px">`:(r.opFotoId?'<div class="empty" style="margin-top:8px">Cargando foto...</div>':'')}</div></div>`;
+}
+async function getOpPhoto(r){
+ if(r.opFoto)return (r.opW&&r.opH)?{d:r.opFoto,w:r.opW,h:r.opH}:await dims(r.opFoto);
+ if(!r.opFotoId)return null;
+ try{if(!PH[r.opFotoId]){const j=await api('photo',{fid:r.opFotoId});PH[r.opFotoId]=await dims(j.data)}return PH[r.opFotoId]}catch(e){return null}
+}
+async function withOpFoto(r){
+ if(r.opEstado!=='foto')return r;
+ const p=await getOpPhoto(r);
+ return p?Object.assign({},r,{_opimg:p}):r;
+}
+async function loadOpFoto(){
+ const r=S.rec,box=$('#opimg');if(!r||!box||r.opFoto||!r.opFotoId)return;
+ const p=await getOpPhoto(r),b=$('#opimg');
+ if(!b||S.rec!==r)return;
+ b.innerHTML=p?`<img class="pic" src="${p.d}" alt="Foto" style="margin-top:8px">`:'<div class="note">No se pudo cargar la foto (sin internet).</div>';
+}
+async function processOpPhoto(file){
+ const r=S.rec;if(!r||!file)return;
+ toast('Procesando foto...');
+ const ts=Date.now(),geo=await getGeo();
+ try{
+  const ph=await compress(file,{ts,geo,l2:(SES?SES.nombre:'')+' · '+(r.equipo||'sin ID')+' · '+opLbl(TYPES[r.type])});
+  r.opEstado='foto';r.opFoto=ph.d;r.opW=ph.w;r.opH=ph.h;r.opFotoId='';r.opTs=ts;r.opHora=fdt(ts);r.opGeo=geo?{lat:geo.lat,lon:geo.lon,acc:geo.acc}:null;
+  refreshOp();toast(geo?'Foto guardada con fecha, hora y ubicación':'Foto guardada con fecha y hora (sin ubicación)');
+ }catch(e){toast('No se pudo leer la foto')}
 }
 
 async function testServer(){
