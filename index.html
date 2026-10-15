@@ -131,7 +131,7 @@ Object.values(TYPES).forEach(T=>{T.tipoDef=T.tipos[0]});
 /* ---------- Utilidades ---------- */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const store={get(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){toast('No se pudo guardar en el teléfono')}}};
+const store={get(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){toast('No se pudo guardar: el teléfono no tiene espacio. Envía los chequeos pendientes o quita fotos.');return false}}};
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),Math.max(2800,String(m).length*60))}
 const p2=n=>String(n).padStart(2,'0');
 const ymd=d=>d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
@@ -150,7 +150,7 @@ function msgText(r){
  if(r.p1)m+=T.p[0].replace(':','')+': '+r.p1+(r.p2?' (C.I '+r.p2+')':'')+'\n';
  if(r.q1)m+=T.q[0].replace(':','')+': '+r.q1+'\n';
  if(r.q2)m+=T.q[1].replace(':','')+': '+(T.qd.includes(1)?fd(r.q2):r.q2)+'\n';
- m+='Realizado por: '+(r.realizado||'-')+'\n';m+=opLinea(r);if(r.revisado)m+='Revisado por: '+r.revisado+'\n';
+ m+='Realizado y confirmado digitalmente por: '+dcRealizado(r)+(r.confTs?' el '+fdm(r.confTs):'')+'\n';m+=opLinea(r);if(nFC(r))m+='Fotos del chequeo: '+nFC(r)+'\n';if(r.revisado)m+='Revisado y confirmado digitalmente por: '+dcRevisado(r)+(dcRevisadoHora(r)?' el '+dcRevisadoHora(r):'')+'\n';
  m+='\nResultado: '+s.c+' cumple, '+s.n+' NO cumple, '+s.a+' N/A\n';
  if(s.n){m+='\n*PUNTOS QUE NO CUMPLEN:*\n';itemsOf(T).forEach(x=>{const o=r.it[x.k]||{};if(o.v==='N')m+='- '+x.t+(o.note?': '+o.note:'')+'\n'});m+='\nEquipo con fallas: no operar hasta que el supervisor autorice.\n'}
  else m+='Sin novedades.\n';
@@ -183,7 +183,7 @@ function errMsg(e){
  if(e&&e.code==='red')return navigator.onLine===false?'Este teléfono no tiene internet':'No se pudo conectar con el servidor. Revisa que la dirección termine en /exec y que la implementación esté en "Cualquier persona". Usa "Probar conexión".';
  return 'El servidor respondió algo inesperado. Revisa que la dirección sea la de tu implementación (termina en /exec).';
 }
-function saveHist(h){store.set('chq_hist',h.sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora)).slice(0,500))}
+function saveHist(h){return store.set('chq_hist',h.sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora)).slice(0,500))}
 const pendientes=()=>hist().filter(r=>r.sync===false&&r.realizadoCI===(SES&&SES.ci));
 async function syncPending(silent){
  if(!SES||S.busy)return;
@@ -191,11 +191,13 @@ async function syncPending(silent){
  S.busy=true;
  try{
   if(pend.length){
-   const j=await api('sync',{records:pend.map(r=>Object.assign({},r))});
-   const h=hist();
-   h.forEach(r=>{if(j.guardados.includes(String(r.id))){r.sync=true;const fid=j.fotos&&j.fotos[String(r.id)];if(fid){r.opFotoId=fid;r.opFoto=''}}});   // la foto ya está en el servidor: se libera espacio en el teléfono
-   saveHist(h);
-   if(j.rechazados.length&&!silent)toast(j.rechazados.length+' chequeo(s) no se aceptaron: '+j.rechazados[0].motivo);
+   for(let k=0;k<pend.length;k+=4){
+    const j=await api('sync',{records:pend.slice(k,k+4).map(r=>Object.assign({},r))});
+    const h=hist();
+    h.forEach(r=>{if(j.guardados.includes(String(r.id))){r.sync=true;const fid=j.fotos&&j.fotos[String(r.id)];if(fid){r.opFotoId=fid;r.opFoto=''}const fc=j.fotosCheq&&j.fotosCheq[String(r.id)];if(fc){r.fotoIds=fc;r.fotos=[]}}});   // las fotos ya están en el servidor: se libera espacio en el teléfono
+    saveHist(h);
+    if(j.rechazados.length&&!silent)toast(j.rechazados.length+' chequeo(s) no se aceptaron: '+j.rechazados[0].motivo);
+   }
   }
   const l=await api('list',{since:store.get('chq_since',0)});
   let h=hist();const loc=new Map(h.map(r=>[String(r.id),r]));
@@ -210,9 +212,9 @@ async function syncPending(silent){
 }
 window.addEventListener('online',()=>syncPending(true));
 const hist=()=>store.get('chq_hist',[]);
-const SERVER_VERSION='2026-10-14-h';   // debe coincidir con VERSION en Codigo.gs
+const SERVER_VERSION='2026-10-14-k';   // debe coincidir con VERSION en Codigo.gs
 const API_URL='';   // <- Pega aquí la dirección del servidor (termina en /exec). Si la dejas vacía, la app la pedirá al entrar.
-function newRec(type){const d=new Date(),T=TYPES[type];return{id:Date.now().toString(36),type,fecha:ymd(d),hora:hm(d),sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),tipo:T.tipoDef,equipo:'',p1:'',p2:'',q1:'',q2:'',realizado:SES?SES.nombre:'',realizadoCI:SES?SES.ci:'',revisado:'',revisadoCI:'',revisadoFecha:'',obs:'',it:{},sync:false,opEstado:'',opFoto:'',opFotoId:'',opTs:0,opHora:'',opGeo:null,opW:0,opH:0}}
+function newRec(type){const d=new Date(),T=TYPES[type];return{id:Date.now().toString(36),type,fecha:ymd(d),hora:hm(d),sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),tipo:T.tipoDef,equipo:'',p1:'',p2:'',q1:'',q2:'',realizado:SES?SES.nombre:'',realizadoCI:SES?SES.ci:'',revisado:'',revisadoCI:'',revisadoFecha:'',obs:'',it:{},sync:false,opEstado:'',opFoto:'',opFotoId:'',opTs:0,opHora:'',opGeo:null,opW:0,opH:0,confTs:0,fotos:[],fotoIds:[]}}
 function suggestions(key,extra){const h=hist();return[...new Set([...(extra||[]),...h.map(r=>r[key]).filter(Boolean)])].slice(0,60)}
 const equiposDe=type=>store.get('chq_equipos',[]).filter(e=>e.tipo===type||e.tipo===TYPES[type].sheet||e.tipo===TYPES[type].name).map(e=>e.id)
 const dl=(id,arr)=>'<datalist id="'+id+'">'+arr.map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist>';
@@ -228,12 +230,13 @@ function render(keep){
  else if(S.view==='pin')a.innerHTML=vPin();
  else if(S.view==='afalla')a.innerHTML=vAFalla();
  else if(S.view==='inv')a.innerHTML=vInv();
+ else if(S.view==='eqform')a.innerHTML=vEqForm();
  else if(S.view==='aresult')a.innerHTML=vAResult();
  else a.innerHTML=vResult();
  if(!keep)window.scrollTo(0,0);
  if(S.view==='form')updateProg();
  if(S.view==='aresult')loadAPhotos();
- if(S.view==='result')loadOpFoto();
+ if(S.view==='result'){loadOpFoto();loadCFotos()}
 }
 function vLogin(){
  const needUrl=!apiUrl();
@@ -319,6 +322,7 @@ function vForm(){
   ${eqDatalist('dlEq',r.type)}${dl('dlP1',suggestions('p1'))}
   <h2>Puntos de chequeo</h2>
   <div id="items">${itemsOf(T).map(x=>itemHtml(x,r)).join('')}</div>
+  ${cFotosSection(r)}
   <h2>Observaciones generales</h2>
   <textarea data-f="obs" placeholder="Opcional">${esc(r.obs)}</textarea>
   ${opCard(r)}
@@ -333,12 +337,14 @@ function vResult(){
  const r=S.rec,T=TYPES[r.type],s=stats(r);
  return `<header class="top"><button data-act="home" aria-label="Inicio">‹ Inicio</button><h1>${esc(r.equipo||'Sin ID')}<small>${esc(T.name)} · ${fd(r.fecha)} ${r.hora}</small></h1></header>
  <main>
-  ${r.revisado?`<div class="card" style="border-left:6px solid var(--ok)">Revisado por <b>${esc(r.revisado)}</b>${r.revisadoFecha?' el '+fd(r.revisadoFecha):''}</div>`:''}
+  ${r.confTs?`<div class="card" style="border-left:6px solid var(--ok)">Realizado y confirmado digitalmente por <b>${esc(r.realizado)}</b> (${esc(rolNom(r.realizadoRol||(r.realizadoCI===SES.ci?SES.rol:'')))})<br><span style="color:var(--mute);font-size:14px">C.I ${esc(r.realizadoCI)} · ${fdm(r.confTs)}</span></div>`:''}
+  ${r.revisado?`<div class="card" style="border-left:6px solid var(--ok)">Revisado y confirmado digitalmente por <b>${esc(r.revisado)}</b>${r.revisadoRol?' ('+esc(rolNom(r.revisadoRol))+')':''}<br><span style="color:var(--mute);font-size:14px">${r.revisadoCI?'C.I '+esc(r.revisadoCI)+' · ':''}${esc(dcRevisadoHora(r))}</span></div>`:''}
   <div class="sum"><div style="background:var(--ok)">${s.c}<small>Cumple</small></div><div style="background:var(--bad)">${s.n}<small>No cumple</small></div><div style="background:var(--na)">${s.a}<small>N/A</small></div></div>
   ${s.n?'<div class="alert">Este equipo tiene fallas. No lo operes hasta que el supervisor autorice.</div>':''}
   <div class="card"><pre style="white-space:pre-wrap;font:14px/1.4 inherit;margin:0;font-family:inherit">${esc(msgText(r))}</pre></div>
   ${(()=>{const e=findEq(r.equipo);return e?'<h2>Datos del equipo</h2>'+eqCard(e):''})()}
   ${opEvid(r)}
+  <div id="cfotos">${nFC(r)?'<h2>Fotos del chequeo</h2><div class="empty">Cargando fotos...</div>':''}</div>
   <h2>Enviar</h2>
   <div class="stack">
    <div class="row"><button class="btn wa" data-act="wa">WhatsApp</button><button class="btn tg" data-act="tg">Telegram</button></div>
@@ -364,6 +370,7 @@ document.addEventListener('change',async e=>{
  if(e.target.dataset&&e.target.dataset.a==='equipo'){eqLookupAlert(true);return}
  if(e.target.id==='invfile'){const f=e.target.files[0];e.target.value='';if(f)await importInventario(f);return}
  if(e.target.id==='opFile'){const f=e.target.files[0];e.target.value='';if(f)await processOpPhoto(f);return}
+ if(e.target.id==='cFoto'||e.target.id==='cFotoG'){const cam=e.target.id==='cFoto',files=[...e.target.files];e.target.value='';await addCheckPhotos(files,cam);return}
  if(e.target.id==='aFoto'||e.target.id==='aFotoG'){
   const a=S.alert,cam=e.target.id==='aFoto',files=[...e.target.files];e.target.value='';
   if(files.length)toast('Procesando foto...');
@@ -379,12 +386,20 @@ document.addEventListener('change',async e=>{
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-act]');if(!b)return;
  const a=b.dataset.act,r=S.rec;
- if(a==='opfoto'){getGeo();$('#opFile').click()}
+ if(a==='cfoto'){getGeo();$('#cFoto').click()}
+ else if(a==='cfotog')$('#cFotoG').click();
+ else if(a==='cdel'){r.fotos.splice(+b.dataset.i,1);refreshCThumbs()}
+ else if(a==='cdelid'){r.fotoIds.splice(+b.dataset.i,1);refreshCThumbs()}
+ else if(a==='opfoto'){getGeo();$('#opFile').click()}
  else if(a==='opquitar'){r.opEstado='';r.opFoto='';r.opTs=0;r.opHora='';r.opGeo=null;refreshOp()}
  else if(a==='opausente'){r.opEstado='ausente';r.opFoto='';r.opTs=0;r.opHora='';r.opGeo=null;refreshOp();const o=document.querySelector('[data-f=obs]');if(o){o.placeholder='Obligatorio: explica por qué no hay '+opLbl(TYPES[r.type])+' presente';o.scrollIntoView({block:'center'});o.focus()}}
  else if(a==='testsrv')testServer();
  else if(a==='inv'){S.invq='';S.view='inv';render()}
  else if(a==='invf')$('#invfile').click();
+ else if(a==='eqnew'){S.eqf={edit:false,data:{}};S.view='eqform';render()}
+ else if(a==='eqedit'){const e=findEq(b.dataset.id);if(!e)return;S.eqf={edit:true,data:Object.assign({},e)};S.view='eqform';render()}
+ else if(a==='eqback'){S.view='inv';render()}
+ else if(a==='eqsave')eqSave();
  else if(a==='invx')exportInv(false);
  else if(a==='invt')exportInv(true);
  else if(a==='eqchk'){const e=findEq(b.dataset.id);if(!e)return;const k=typeKeyOf(e.tipo);if(k==='otro'){toast('Este equipo es de tipo "Otro": no tiene formato de chequeo');return}S.rec=newRec(k);S.rec.equipo=e.id;if(SEDES.includes(e.sede))S.rec.sede=e.sede;if(e.patio)S.rec.patio=e.patio;S.view='form';render()}
@@ -415,7 +430,7 @@ document.addEventListener('click',async e=>{
  else if(a==='adduser')addUser();
  else if(a==='uopt')userOpts(b.dataset.ci);
  else if(a==='review'){
-  if(!confirm('¿Confirmas que revisaste este chequeo? Quedará registrado con tu nombre.'))return;
+  if(!(await askPin('Confirma la revisión con tu PIN')))return;
   try{const j=await api('review',{id:r.id});const h=hist().map(x=>x.id===r.id?Object.assign(j.record,{sync:true}):x);saveHist(h);S.rec=j.record;S.rec.sync=true;toast('Chequeo revisado');render()}catch(e){toast(errMsg(e))}
  }
  else if(a==='new'){S.rec=newRec(b.dataset.t);S.view='form';render()}
@@ -438,7 +453,7 @@ document.addEventListener('click',async e=>{
  else if(a==='exp'){const blob=new Blob([JSON.stringify(hist())],{type:'application/json'});download(blob,'chequeos_copia_'+ymd(new Date())+'.json')}
  else if(a==='imp'){$('#impf').click()}
 });
-function save(){
+async function save(){
  const r=S.rec,T=TYPES[r.type],s=stats(r);
  if(!r.equipo.trim()){toast('Falta el ID del equipo');return}
  if(s.done<s.total){toast('Faltan '+(s.total-s.done)+' puntos por marcar');const first=itemsOf(T).find(x=>!(r.it[x.k]||{}).v);const el=first&&document.querySelector('.item[data-k="'+first.k+'"]');el&&el.scrollIntoView({block:'center'});return}
@@ -447,9 +462,11 @@ function save(){
  if(T.opReq&&!r.opEstado){toast('Falta la presencia del '+opLbl(T)+': toma la foto o indica que no hay');const c=$('#opcard');c&&c.scrollIntoView({block:'center'});return}
  if(r.opEstado==='foto'&&!r.opFoto&&!r.opFotoId){toast('Falta la foto del '+opLbl(T));return}
  if(r.opEstado==='ausente'&&(r.obs||'').trim().length<8){toast('Escribe en Observaciones por qué no hay '+opLbl(T)+' presente');const o=document.querySelector('[data-f=obs]');o&&o.scrollIntoView({block:'center'});o&&o.focus();return}
+ if(!(await askPin('Confirma el chequeo con tu PIN')))return;
+ r.confTs=Date.now();
  r.equipo=r.equipo.trim();
  store.set('last_sede',r.sede);store.set('last_patio',r.patio);r.sync=false;
- const h=hist().filter(x=>x.id!==r.id);h.unshift(r);saveHist(h);
+ const h=hist().filter(x=>x.id!==r.id);h.unshift(r);if(!saveHist(h))return;
  S.view='result';render();toast('Chequeo guardado');
  syncPending(true).then(()=>{const x=hist().find(y=>y.id===r.id);if(x&&x.sync&&S.view==='result'&&S.rec&&S.rec.id===r.id){S.rec=x;toast('Enviado al servidor')}});
 }
@@ -461,7 +478,7 @@ async function exportFile(r,kind){
   if(kind==='xlsx'&&!window.ExcelJS){toast('Falta cargar la librería de Excel. Conéctate a internet una vez.');return}
   if(kind==='pdf'&&!window.jspdf){toast('Falta cargar la librería de PDF. Conéctate a internet una vez.');return}
   toast('Preparando '+(kind==='xlsx'?'Excel':'PDF')+'...');
-  const rr=await withOpFoto(r),blob=kind==='xlsx'?await buildXlsx(rr):buildPdf(rr),name=fileBase(r)+'.'+kind;
+  const rr=await withFotos(await withOpFoto(r)),blob=kind==='xlsx'?await buildXlsx(rr):buildPdf(rr),name=fileBase(r)+'.'+kind;
   const file=new File([blob],name,{type:blob.type});
   if(navigator.canShare&&navigator.canShare({files:[file]})){
    try{await navigator.share({files:[file],title:name});return}catch(e){if(e&&e.name==='AbortError')return}
@@ -526,14 +543,16 @@ async function buildXlsx(r){
  m(o1,1,o2,12,obsText(r),{box:true,top:true});
  row=o2+1;ws.getRow(row).height=8.25;m(row,1,row,12,'',{fill:GREY});
  row++;
- const sg=[['REALIZADO POR:',r.realizado,T.signR,signName(r)],['FIRMA:','','FIRMA:',''],['FECHA:',fd(r.fecha),'FECHA:',fd(r.fecha)]];
- sg.forEach((s,i)=>{const rr=row+i;ws.getRow(rr).height=23.25;
-  m(rr,1,rr,2,s[0],{bold:true,h:'right',box:true,fill:GREY});m(rr,3,rr,6,s[1],{box:true});
-  m(rr,7,rr,8,s[2],{bold:true,h:'right',box:true,fill:GREY});m(rr,9,rr,12,s[3],{box:true});
+ ws.getRow(row).height=15;m(row,1,row,12,'CONFIRMACION DIGITAL',{bold:true,size:12,h:'center',box:true,fill:GREY});
+ [[row+1,'REALIZADO POR:',dcRealizado(r),dcRealizadoHora(r)],[row+2,'REVISADO POR:',dcRevisado(r),dcRevisadoHora(r)]].forEach(([rr,lab,txt,hora])=>{
+  ws.getRow(rr).height=28;
+  m(rr,1,rr,2,lab,{bold:true,h:'right',box:true,fill:GREY});m(rr,3,rr,8,txt,{box:true});
+  m(rr,9,rr,10,'FECHA Y HORA:',{bold:true,size:10,h:'right',box:true,fill:GREY});m(rr,11,rr,12,hora,{box:true,size:10,h:'center'});
  });
- let last=row+2;
+ ws.getRow(row+3).height=24;m(row+3,1,row+3,12,'Confirmado digitalmente con la cédula y el PIN de cada usuario. Registro N° '+r.id+'.',{box:true,size:9});
+ let last=row+3;
  if(r.opEstado){
-  const ev=row+3;
+  const ev=row+4;
   ws.getRow(ev).height=15;m(ev,1,ev,12,'EVIDENCIA DE PRESENCIA DEL '+opLbl(T).toUpperCase(),{bold:true,size:11,h:'center',box:true,fill:GREY});
   if(r.opEstado==='ausente'){ws.getRow(ev+1).height=30;m(ev+1,1,ev+1,12,opTexto(r),{box:true,bold:true});last=ev+1}
   else{
@@ -543,6 +562,20 @@ async function buildXlsx(r){
    if(r._opimg){const p=r._opimg,id=wb.addImage({base64:p.d,extension:'jpeg'}),sc=Math.min(240/p.w,112/p.h);ws.addImage(id,{tl:{col:2.1,row:ev+0.05},ext:{width:Math.round(p.w*sc),height:Math.round(p.h*sc)}})}
    last=ev+1;
   }
+ }
+ if(r._fotos&&r._fotos.length){
+  ws.pageSetup.fitToHeight=0;
+  const hr=last+2;ws.getRow(hr).height=15;m(hr,1,hr,12,'FOTOS DEL CHEQUEO',{bold:true,size:11,h:'center',box:true,fill:GREY});
+  const filas=Math.ceil(r._fotos.length/3);
+  for(let f=0;f<filas;f++){
+   const rr=hr+1+f;ws.getRow(rr).height=120;
+   [[1,4],[5,8],[9,12]].forEach(([c1,c2],i)=>{
+    m(rr,c1,rr,c2,'',{box:true});const p=r._fotos[f*3+i];if(!p)return;
+    const id=wb.addImage({base64:p.d,extension:'jpeg'}),sc=Math.min(280/p.w,150/p.h);
+    ws.addImage(id,{tl:{col:c1-1+.1,row:rr-1+.05},ext:{width:Math.round(p.w*sc),height:Math.round(p.h*sc)}});
+   });
+  }
+  last=hr+filas;
  }
  ws.pageSetup.printArea='A1:L'+(last+1);
  const buf=await wb.xlsx.writeBuffer();
@@ -599,11 +632,13 @@ function buildPdf(r){
  cell(0,11,y,5,'OBSERVACIONES GENERALES',{bold:true,size:9,align:'center',box:true,fill:GR});y+=5;
  cell(0,11,y,38,obsText(r),{size:9,box:true,top:true});y+=38;
  cell(0,11,y,2.5,'',{fill:GR});y+=2.5;
- [['REALIZADO POR:',r.realizado,T.signR,signName(r)],['FIRMA:','','FIRMA:',''],['FECHA:',fd(r.fecha),'FECHA:',fd(r.fecha)]].forEach(s=>{
-  cell(0,1,y,7.5,s[0],{bold:true,size:9,align:'right',box:true,fill:GR});cell(2,5,y,7.5,s[1],{size:9,box:true});
-  cell(6,7,y,7.5,s[2],{bold:true,size:9,align:'right',box:true,fill:GR});cell(8,11,y,7.5,s[3],{size:9,box:true});
-  y+=7.5;
+ cell(0,11,y,5,'CONFIRMACION DIGITAL',{bold:true,size:9,align:'center',box:true,fill:GR});y+=5;
+ [['REALIZADO POR:',dcRealizado(r),dcRealizadoHora(r)],['REVISADO POR:',dcRevisado(r),dcRevisadoHora(r)]].forEach(s=>{
+  cell(0,1,y,8,s[0],{bold:true,size:9,align:'right',box:true,fill:GR});cell(2,7,y,8,s[1],{size:9,box:true});
+  cell(8,9,y,8,'FECHA Y HORA:',{bold:true,size:8,align:'right',box:true,fill:GR});cell(10,11,y,8,s[2],{size:8.5,box:true,align:'center'});
+  y+=8;
  });
+ cell(0,11,y,6,'Confirmado digitalmente con la cédula y el PIN de cada usuario. Registro N° '+r.id+'.',{size:7.5,box:true});y+=6;
  if(r.opEstado){
   y+=2;
   cell(0,11,y,5,'EVIDENCIA DE PRESENCIA DEL '+opLbl(T).toUpperCase(),{bold:true,size:9,align:'center',box:true,fill:GR});y+=5;
@@ -615,6 +650,20 @@ function buildPdf(r){
    y+=40;
   }
  }
+ if(r._fotos&&r._fotos.length){
+  if(y+60>287){d.addPage();y=12}else y+=2;
+  cell(0,11,y,5,'FOTOS DEL CHEQUEO',{bold:true,size:9,align:'center',box:true,fill:GR});y+=5;
+  const filas=Math.ceil(r._fotos.length/3);
+  for(let f=0;f<filas;f++){
+   if(y+50>287){d.addPage();y=12}
+   [[0,3],[4,7],[8,11]].forEach(([c1,c2],i)=>{
+    cell(c1,c2,y,50,'',{box:true});const p=r._fotos[f*3+i];if(!p)return;
+    const w=cx[c2+1]-cx[c1]-2,h=48,sc=Math.min(w/p.w,h/p.h),pw=p.w*sc,ph=p.h*sc;
+    d.addImage(p.d,'JPEG',cx[c1]+1+(w-pw)/2,y+1+(h-ph)/2,pw,ph);
+   });
+   y+=50;
+  }
+ }
  return d.output('blob');
 }
 
@@ -624,7 +673,7 @@ function typeKeyStrict(t){const n=norm(t);if(!n)return null;if(n==='otro')return
 const typeKeyOf=t=>typeKeyStrict(t)||'otro';
 const findEq=id=>{const k=String(id||'').trim().toUpperCase();return k?store.get('chq_equipos',[]).find(e=>String(e.id).trim().toUpperCase()===k)||store.get('chq_equipos',[]).find(e=>e.tag&&String(e.tag).trim().toUpperCase()===k):null};
 function eqCard(e){
- const kv=[['Marca / modelo',[e.marca,e.modelo].filter(Boolean).join(' ')],['Año',e.anio],['Serial',e.serial],['Placa',e.placa],['Capacidad',e.capacidad],['Sede / patio',[e.sede,e.patio].filter(Boolean).join(' / ')],['Color',e.color],['TAG',e.tag],['Observaciones',e.observaciones]].filter(x=>x[1]);
+ const kv=[['Marca / modelo',[e.marca,e.modelo].filter(Boolean).join(' ')],['Año',e.anio],['Serial',e.serial],['Placa',e.placa],['Capacidad',e.capacidad],['Sede / patio',[e.sede,e.patio].filter(Boolean).join(' / ')],['Color',e.color],['TAG',e.tag],['Observaciones',e.observaciones],['Agregado por',[e.alta_por,e.alta_fecha].filter(Boolean).join(' · ')]].filter(x=>x[1]);
  return `<div class="eq"><div class="eqh"><span><b>${esc(e.id)}</b> · ${esc(e.tipo)}</span>${e.estado?`<span class="tag ${e.estado==='Operativo'?'':e.estado==='En mantenimiento'?'warn':'bad'}">${esc(e.estado)}</span>`:''}</div>${e.descripcion?`<div>${esc(e.descripcion)}</div>`:''}${kv.length?`<dl>${kv.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`:''}</div>`;
 }
 function eqBox(id,ft,nf){
@@ -663,23 +712,58 @@ const INV=[['tipo','TIPO',22],['id','ID',14],['descripcion','DESCRIPCION',32],['
 const INVALIAS={tipo:['tipo','tipodeequipo'],id:['id','idequipo','codigo','equipo'],descripcion:['descripcion','detalle'],marca:['marca'],modelo:['modelo'],anio:['anio','ano','year'],serial:['serial','nroserie','serie'],placa:['placa'],capacidad:['capacidad'],sede:['sede'],patio:['patio'],estado:['estado'],observaciones:['observaciones','observacion','notas'],color:['color'],tag:['tag','etiqueta']};
 const TIPOS_LISTA=[...Object.values(TYPES).map(T=>T.name),'Otro'];
 function invListHtml(){
+ const full=(RANGO[SES.rol]||0)>=3;
  const eqs=store.get('chq_equipos',[]),q=norm(S.invq||'');
  const list=eqs.filter(e=>!q||norm([e.id,e.tag,e.descripcion,e.marca,e.modelo,e.serial,e.placa,e.tipo,e.patio,e.sede,e.color].join(' ')).includes(q));
  if(!eqs.length)return '<div class="empty">Aún no hay equipos en el inventario.</div>';
  if(!list.length)return '<div class="empty">No se encontró ningún equipo con esa búsqueda.</div>';
- return `<p style="color:var(--mute);font-size:13px">${list.length} equipo${list.length>1?'s':''}${list.length>40?' (mostrando 40; escribe más para filtrar)':''}</p>`+list.slice(0,40).map(e=>`${eqCard(e)}<div class="row" style="margin-bottom:10px"><button class="mini" data-act="eqchk" data-id="${esc(e.id)}">Hacer chequeo</button><button class="mini" data-act="eqalert" data-id="${esc(e.id)}">Reportar falla</button></div>`).join('');
+ return `<p style="color:var(--mute);font-size:13px">${list.length} equipo${list.length>1?'s':''}${list.length>40?' (mostrando 40; escribe más para filtrar)':''}</p>`+list.slice(0,40).map(e=>`${eqCard(e)}<div class="row" style="margin-bottom:10px${full?';grid-template-columns:repeat(3,1fr)':''}"><button class="mini" data-act="eqchk" data-id="${esc(e.id)}">Hacer chequeo</button><button class="mini" data-act="eqalert" data-id="${esc(e.id)}">Reportar falla</button>${full?`<button class="mini" data-act="eqedit" data-id="${esc(e.id)}">Editar</button>`:''}</div>`).join('');
 }
 function vInv(){
- const adm=(RANGO[SES.rol]||0)>=3;
+ const rk=RANGO[SES.rol]||0,can=rk>=2,full=rk>=3;
  return `<header class="top"><button data-act="home">‹ Atrás</button><h1>Inventario de equipos<small>${store.get('chq_equipos',[]).length} equipos</small></h1></header><main>
  <input id="invq" type="search" placeholder="Buscar por ID, TAG, marca, serial, placa..." value="${esc(S.invq||'')}" autocomplete="off">
+ ${can?'<button class="btn pri" style="width:100%;margin-top:10px" data-act="eqnew">Agregar un equipo</button>':''}
  <div id="invlist" style="margin-top:8px">${invListHtml()}</div>
- ${adm?`<h2>Cargar o modificar el inventario</h2><div class="card">
-  <p style="margin:0 0 8px;font-size:14px;color:var(--mute)">Descarga el Excel, edítalo (agrega, cambia o quita equipos) y vuelve a cargarlo.</p>
-  <label>Al cargar el Excel</label><select id="invmodo"><option value="combinar">Agregar y actualizar (no borra los demás)</option><option value="reemplazar">Reemplazar todo el inventario</option></select>
+ ${can?`<h2>${full?'Cargar o modificar el inventario':'Agregar varios equipos con Excel'}</h2><div class="card">
+  <p style="margin:0 0 8px;font-size:14px;color:var(--mute)">${full?'Descarga el Excel, edítalo (agrega, cambia o quita equipos) y vuelve a cargarlo.':'Descarga la plantilla, llénala con los equipos nuevos y cárgala. Los equipos que ya existen no se modifican.'}</p>
+  ${full?'<label>Al cargar el Excel</label><select id="invmodo"><option value="combinar">Agregar y actualizar (no borra los demás)</option><option value="reemplazar">Reemplazar todo el inventario</option></select>':''}
   <div class="stack" style="margin-top:10px"><button class="btn pri" data-act="invf">Cargar Excel</button><div class="row"><button class="btn" data-act="invx">Descargar inventario actual</button><button class="btn" data-act="invt">Descargar plantilla</button></div></div>
   <input type="file" id="invfile" accept=".xlsx" hidden></div>`:''}
  </main>`;
+}
+function vEqForm(){
+ const f=S.eqf,d=f.data;
+ const inp=(k,lab,ex)=>`<label>${lab}</label><input id="ef_${k}" value="${esc(d[k]||'')}" ${ex||''}>`;
+ return `<header class="top"><button data-act="eqback">‹ Atrás</button><h1>${f.edit?'Editar equipo':'Agregar equipo'}<small>Inventario</small></h1></header><main>
+ <div class="card">
+  <label>Tipo de equipo *</label><select id="ef_tipo">${TIPOS_LISTA.map(x=>`<option ${x===d.tipo?'selected':''}>${esc(x)}</option>`).join('')}</select>
+  ${inp('id','ID del equipo *',f.edit?'readonly style="background:#EEF0F3"':'autocapitalize="characters" placeholder="Ej: RS-233"')}
+  ${inp('descripcion','Descripción')}
+  <div class="row"><div>${inp('marca','Marca')}</div><div>${inp('modelo','Modelo')}</div></div>
+  <div class="row"><div>${inp('anio','Año','inputmode="numeric" maxlength="4"')}</div><div>${inp('serial','Serial')}</div></div>
+  <div class="row"><div>${inp('placa','Placa')}</div><div>${inp('capacidad','Capacidad')}</div></div>
+  <div class="row"><div>${inp('color','Color')}</div><div>${inp('tag','TAG')}</div></div>
+  <div class="row"><div><label>Sede</label><select id="ef_sede"><option value="">—</option>${SEDES.map(x=>`<option ${x===d.sede?'selected':''}>${x}</option>`).join('')}</select></div><div>${inp('patio','Patio')}</div></div>
+  <label>Estado</label><select id="ef_estado"><option value="">—</option>${['Operativo','En mantenimiento','Fuera de servicio'].map(x=>`<option ${x===d.estado?'selected':''}>${x}</option>`).join('')}</select>
+  <label>Observaciones</label><textarea id="ef_observaciones">${esc(d.observaciones||'')}</textarea>
+ </div></main><div class="dock"><button class="btn pri" data-act="eqsave">${f.edit?'Guardar cambios':'Agregar al inventario'}</button></div>`;
+}
+async function eqSave(){
+ const g=k=>((($('#ef_'+k)||{}).value)||'').trim();
+ const row={_f:'formulario'};['tipo','id','descripcion','marca','modelo','anio','serial','placa','capacidad','color','tag','sede','patio','estado','observaciones'].forEach(k=>row[k]=g(k));
+ if(!row.id){toast('Falta el ID del equipo');return}
+ row.id=row.id.toUpperCase();if(row.tag)row.tag=row.tag.toUpperCase();
+ if(row.anio&&!/^\d{4}$/.test(row.anio)){toast('El año debe tener 4 números');return}
+ if(!S.eqf.edit&&findEq(row.id)){toast('Ese ID ya existe en el inventario');return}
+ if(row.tag){const o=store.get('chq_equipos',[]).find(e=>e.tag&&String(e.tag).toUpperCase()===row.tag.toUpperCase()&&String(e.id).toUpperCase()!==row.id.toUpperCase());if(o){toast('Ese TAG ya lo tiene el equipo '+o.id);return}}
+ toast('Guardando...');
+ try{
+  const j=await api('setEquipos',{rows:[row],modo:'combinar'});
+  if(j.omitidos&&j.omitidos.length){toast(j.omitidos[0].motivo);return}
+  const e=await api('equipos');store.set('chq_equipos',e.equipos);
+  const edit=S.eqf.edit;S.view='inv';render();toast(edit?'Equipo actualizado':'Equipo agregado al inventario');
+ }catch(e){toast(errMsg(e))}
 }
 function cv(c){
  let v=c&&c.value;if(v==null)return '';
@@ -711,7 +795,7 @@ async function buildInvXlsx(list,plantilla){
  ws.views=[{state:'frozen',xSplit:1,ySplit:1}];
  ws.autoFilter={from:{row:1,column:1},to:{row:1,column:INV.length}};
  const ins=wb.addWorksheet('INSTRUCCIONES');ins.getColumn(1).width=100;
- ['INVENTARIO DE EQUIPOS - COMO USAR ESTE ARCHIVO','','1. Una fila por equipo. Puedes agregar, cambiar o quitar filas en la hoja INVENTARIO.','2. TIPO, SEDE y ESTADO se eligen de una lista. No cambies los encabezados de la fila 1.','3. El ID es obligatorio y no se repite. Con ese ID la app muestra los datos del equipo.','4. La fila EJEMPLO se ignora al cargar.','5. En la app: Inventario de equipos > Cargar Excel (jefe de departamento y administrador).','   "Agregar y actualizar" no borra los equipos que no vengan en el archivo.','   "Reemplazar todo" deja solo lo del archivo y guarda un respaldo en la hoja Equipos_respaldo.'].forEach((t,i)=>{const c=ins.getCell(i+1,1);c.value=t;c.font={name:'Arial',size:11,bold:i===0};c.alignment={wrapText:true}});
+ ['INVENTARIO DE EQUIPOS - COMO USAR ESTE ARCHIVO','','1. Una fila por equipo. Puedes agregar, cambiar o quitar filas en la hoja INVENTARIO.','2. TIPO, SEDE y ESTADO se eligen de una lista. No cambies los encabezados de la fila 1.','3. El ID es obligatorio y no se repite. Con ese ID la app muestra los datos del equipo.','4. La fila EJEMPLO se ignora al cargar.','5. En la app: Inventario de equipos > Cargar Excel (supervisor, jefe de departamento y administrador).','   "Agregar y actualizar" no borra los equipos que no vengan en el archivo.','   "Reemplazar todo" deja solo lo del archivo y guarda un respaldo en la hoja Equipos_respaldo.'].forEach((t,i)=>{const c=ins.getCell(i+1,1);c.value=t;c.font={name:'Arial',size:11,bold:i===0};c.alignment={wrapText:true}});
  const buf=await wb.xlsx.writeBuffer();
  return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
@@ -762,7 +846,7 @@ const GCOL={C:'#B3261E',I:'#C77700',M:'#5B6573'};
 const ESTNOM={abierta:'Abierta',atencion:'En atención',cerrada:'Cerrada'};
 const eqName=k=>TYPES[k]?TYPES[k].name:'Otro';
 const alerts=()=>store.get('chq_alerts',[]);
-function saveAlerts(l){store.set('chq_alerts',l.sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora)).slice(0,300))}
+function saveAlerts(l){return store.set('chq_alerts',l.sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora)).slice(0,300))}
 const pendientesA=()=>alerts().filter(a=>a.sync===false&&a.porCI===(SES&&SES.ci));
 function newAlert(){const d=new Date();return{id:'A'+Date.now().toString(36),fecha:ymd(d),hora:hm(d),sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),type:'maq',equipo:'',comp:'',grav:'',desc:'',fotos:[],fids:[],por:SES.nombre,porCI:SES.ci,porRol:SES.rol,estado:'abierta',atiende:'',atiendeCI:'',atiendeFecha:'',cierreNota:'',cierreFecha:'',sync:false}}
 function mergeAlert(sa){sa.sync=true;sa.fotos=[];const l=alerts().filter(x=>x.id!==sa.id);l.push(sa);saveAlerts(l);return sa}
@@ -879,7 +963,7 @@ function saveAlert(){
  if(a.desc.trim().length<10){toast('Describe la falla (mínimo 10 letras)');return}
  a.equipo=a.equipo.trim();a.sync=false;
  store.set('last_sede',a.sede);store.set('last_patio',a.patio);
- const l=alerts().filter(x=>x.id!==a.id);l.push(a);saveAlerts(l);
+ const l=alerts().filter(x=>x.id!==a.id);l.push(a);if(!saveAlerts(l))return;
  S.view='aresult';render();toast('Alerta guardada');
  syncPending(true).then(()=>{const x=alerts().find(y=>y.id===a.id);if(x&&x.sync&&S.view==='aresult'&&S.alert&&S.alert.id===a.id){S.alert=x;toast('Alerta enviada a supervisores y jefes');render(true)}});
 }
@@ -1114,6 +1198,64 @@ async function processOpPhoto(file){
  }catch(e){toast('No se pudo leer la foto')}
 }
 
+/* ---------- Confirmación digital (reemplaza las firmas) ---------- */
+const fdm=ms=>fdt(ms).slice(0,16);
+const rolNom=k=>ROLNOM[k]||ROLNOM.tecnico;
+const dcRealizado=r=>(r.realizado||'-')+' ('+rolNom(r.realizadoRol||(SES&&r.realizadoCI===SES.ci?SES.rol:''))+') · C.I '+(r.realizadoCI||'-');
+const dcRealizadoHora=r=>r.confTs?fdm(r.confTs):fd(r.fecha);
+const dcRevisado=r=>r.revisado?r.revisado+(r.revisadoRol?' ('+rolNom(r.revisadoRol)+')':'')+(r.revisadoCI?' · C.I '+r.revisadoCI:''):'Pendiente de revisión';
+const dcRevisadoHora=r=>r.revisadoTs?fdm(r.revisadoTs):(r.revisadoFecha?fd(r.revisadoFecha):'');
+// El PIN se vuelve a pedir al confirmar: la sesión queda abierta en el teléfono y así no confirma cualquiera que lo tenga en la mano.
+function askPin(msg){
+ return new Promise(res=>{
+  if($('#pinmodal'))return res(false);
+  const o=document.createElement('div');o.id='pinmodal';
+  o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px';
+  o.innerHTML=`<div role="dialog" aria-modal="true" style="background:#fff;border-radius:12px;padding:18px;width:100%;max-width:360px"><b style="font-size:18px">${esc(msg)}</b><p style="margin:6px 0 10px;color:var(--mute);font-size:14px">Es tu confirmación digital: queda registrado tu nombre, rol, cédula, fecha y hora.</p><input id="pinIn" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Tu PIN"><div class="row" style="margin-top:12px"><button class="btn" id="pinNo">Cancelar</button><button class="btn pri" id="pinOk">Confirmar</button></div></div>`;
+  document.body.appendChild(o);
+  const inp=o.querySelector('#pinIn');inp.focus();
+  const done=v=>{o.remove();res(v)},ok=()=>{if(inp.value.trim()===String(SES.pin))done(true);else{toast('PIN incorrecto');inp.value='';inp.focus()}};
+  o.querySelector('#pinNo').onclick=()=>done(false);o.querySelector('#pinOk').onclick=ok;
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')ok()});
+ });
+}
+/* ---------- Fotos del chequeo (hasta 6) ---------- */
+const MAX_FC=6;
+const nFC=r=>(r.fotos||[]).length+(r.fotoIds||[]).length;
+function cThumbsHtml(r){
+ return (r.fotoIds||[]).map((id,i)=>`<div class="th"><div class="empty" style="height:96px;padding:8px;font-size:12px;display:grid;place-items:center">Foto guardada</div><button type="button" data-act="cdelid" data-i="${i}" aria-label="Quitar foto guardada ${i+1}">×</button></div>`).join('')
+  +(r.fotos||[]).map((d,i)=>`<div class="th"><img src="${d}" alt="Foto ${i+1}"><button type="button" data-act="cdel" data-i="${i}" aria-label="Quitar foto ${i+1}">×</button></div>`).join('');
+}
+function cFotosSection(r){
+ r.fotos=r.fotos||[];r.fotoIds=r.fotoIds||[];   // los chequeos que vuelven del servidor (o de versiones anteriores) no traen estas listas
+ return `<h2>Fotos del chequeo (hasta ${MAX_FC})</h2><div id="cthumbs" class="thumbs">${cThumbsHtml(r)}</div>
+  <div class="row"><button type="button" class="btn pri" data-act="cfoto">Tomar foto</button><button type="button" class="btn" data-act="cfotog">De la galería</button></div>
+  <p style="margin:6px 0 0;font-size:13px;color:var(--mute)">Opcional. Las fotos tomadas con la cámara salen con fecha, hora y ubicación.</p>
+  <input type="file" id="cFoto" accept="image/*" capture="environment" hidden><input type="file" id="cFotoG" accept="image/*" multiple hidden>`;
+}
+function refreshCThumbs(){const b=$('#cthumbs');if(b&&S.rec)b.innerHTML=cThumbsHtml(S.rec)}
+async function addCheckPhotos(files,cam){
+ const r=S.rec;if(!r||!files.length)return;
+ toast('Procesando foto...');
+ const geo=cam?await getGeo():null;
+ for(const f of files){
+  if(nFC(r)>=MAX_FC){toast('Máximo '+MAX_FC+' fotos por chequeo');break}
+  try{const ts=cam?Date.now():(f.lastModified||Date.now());const ph=await compress(f,{ts,geo,l2:(SES?SES.nombre:'')+' · '+(r.equipo||'sin ID')+(cam?'':' · foto de galería')});r.fotos.push(ph.d)}catch(_){toast('No se pudo leer la foto')}
+ }
+ refreshCThumbs();
+}
+async function cPhotos(r){
+ const out=[];
+ for(const d of (r.fotos||[]))out.push(await dims(d));
+ for(const id of (r.fotoIds||[])){try{if(!PH[id]){const j=await api('photo',{fid:id});PH[id]=await dims(j.data)}out.push(PH[id])}catch(e){}}
+ return out;
+}
+async function withFotos(r){const ph=await cPhotos(r);return ph.length?Object.assign({},r,{_fotos:ph}):r}
+async function loadCFotos(){
+ const r=S.rec;if(!r||!$('#cfotos')||!nFC(r))return;
+ const ph=await cPhotos(r),c=$('#cfotos');if(!c||S.rec!==r)return;
+ c.innerHTML=ph.length?'<h2>Fotos del chequeo</h2>'+ph.map((p,i)=>`<img class="pic" src="${p.d}" alt="Foto ${i+1} del chequeo">`).join(''):'<div class="note">No se pudieron cargar las fotos (sin internet).</div>';
+}
 async function testServer(){
  const el=$('#lUrl'),url=((el&&el.value)||apiUrl()||'').trim();
  if(!url){toast('Escribe la dirección del servidor');return}
