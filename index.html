@@ -86,6 +86,12 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid v
 .eq dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:6px 0 0;font-size:14px}
 .eq dt{color:var(--mute)}.eq dd{margin:0}
 .note{background:#FFF8E1;border:1px solid var(--sun);color:#5B4300;border-radius:8px;padding:8px 10px;margin:8px 0;font-size:14px}
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:7;display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -2px 8px rgba(0,0,0,.06)}
+.tabs button{position:relative;font:inherit;font-size:12px;font-weight:600;background:none;border:0;border-top:3px solid transparent;color:var(--mute);padding:8px 2px 7px;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:58px}
+.tabs button.on{color:var(--navy);border-top-color:var(--sun)}
+.tabs svg{width:24px;height:24px}
+.tabs .bd{position:absolute;top:4px;left:calc(50% + 8px);min-width:18px;height:18px;border-radius:9px;background:var(--bad);color:#fff;font-style:normal;font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 4px}
+.cnt{margin:6px 0 8px;font-size:13px;color:var(--mute)}
 #toast{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#1B1F27;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90%;text-align:center}
 #toast.show{opacity:1}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
@@ -159,7 +165,7 @@ function msgText(r){
 }
 
 /* ---------- Estado ---------- */
-const S={view:'home',rec:null,filtro:'pend',users:null,busy:false};
+const S={view:'home',tab:'chq',rec:null,filtro:'pend',users:null,busy:false,fc:{desde:'',hasta:'',tipo:'',id:''},fa:{desde:'',hasta:'',tipo:'',id:'',estado:''},fshow:{c:false,a:false}};
 const ROLNOM={tecnico:'Técnico',supervisor:'Supervisor',jefe:'Jefe de departamento',admin:'Administrador'};
 const RANGO={tecnico:1,supervisor:2,jefe:3,admin:4};
 let SES=store.get('chq_ses',null);               // {ci,pin,nombre,rol}
@@ -222,14 +228,16 @@ const dl=(id,arr)=>'<datalist id="'+id+'">'+arr.map(v=>'<option value="'+esc(v)+
 /* ---------- Vistas ---------- */
 function render(keep){
  const a=$('#app');
+ if(S.view==='home'&&S.tab==='inv')S.view='inv';   // al volver de un chequeo hecho desde el inventario
+ if(S.view==='inv')S.tab='inv';
  if(!SES&&S.view!=='login')S.view='login';
  if(S.view==='login')a.innerHTML=vLogin();
- else if(S.view==='home')a.innerHTML=vHome();
+ else if(S.view==='home')a.innerHTML=vHome()+navHtml();
  else if(S.view==='form')a.innerHTML=vForm();
  else if(S.view==='users')a.innerHTML=vUsers();
  else if(S.view==='pin')a.innerHTML=vPin();
  else if(S.view==='afalla')a.innerHTML=vAFalla();
- else if(S.view==='inv')a.innerHTML=vInv();
+ else if(S.view==='inv')a.innerHTML=vInv()+navHtml();
  else if(S.view==='eqform')a.innerHTML=vEqForm();
  else if(S.view==='aresult')a.innerHTML=vAResult();
  else a.innerHTML=vResult();
@@ -248,35 +256,95 @@ function vLogin(){
  <button class="btn pri" style="margin-top:16px;width:100%" data-act="login">Entrar</button>
  <p style="color:var(--mute);font-size:13px;text-align:center">La primera vez necesitas internet.</p></div>`;
 }
+const ICON={
+ chq:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9z"/><path d="M9 14l2 2 4-4"/></svg>',
+ ale:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>',
+ inv:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4"/><path d="M12 11v10"/></svg>',
+ cta:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>'
+};
+const TABS=[['chq','Chequeos'],['ale','Alertas'],['inv','Inventario'],['cta','Cuenta']];
+function navHtml(){
+ const sup=esSup();
+ const bd={chq:sup?hist().filter(r=>!r.revisado&&reviewOk(r)&&r.sync!==false).length:0,ale:sup?alerts().filter(a=>a.estado==='abierta'&&a.porCI!==SES.ci).length:0};
+ return `<nav class="tabs" aria-label="Secciones">${TABS.map(([k,l])=>`<button data-act="tab" data-t="${k}" class="${S.tab===k?'on':''}"${S.tab===k?' aria-current="page"':''}>${ICON[k]}<span>${l}</span>${bd[k]?`<i class="bd" aria-label="${bd[k]} pendientes">${bd[k]}</i>`:''}</button>`).join('')}</nav>`;
+}
 function vHome(){
- const all=hist();
- const mine=all.filter(r=>r.realizadoCI===SES.ci);
+ const tab=S.tab==='ale'||S.tab==='cta'?S.tab:'chq';
  const pend=pendientes().length+pendientesA().length;
- let list=esSup()?all:mine;
- if(esSup()&&S.filtro==='pend')list=list.filter(r=>!r.revisado&&reviewOk(r));
- else if(esSup()&&S.filtro==='mine')list=mine;
- list=list.slice(0,40);
- const nRev=esSup()?all.filter(r=>!r.revisado&&reviewOk(r)).length:0;
- return `<header class="top"><h1>Chequeo diario<small class="who">${esc(SES.nombre)} · ${ROLNOM[SES.rol]}</small></h1><button data-act="logout">Salir</button></header>
+ const titles={chq:'Chequeos',ale:'Alertas de falla',cta:'Mi cuenta'};
+ const body=tab==='chq'?vTabChq():tab==='ale'?vTabAle():vTabCta();
+ return `<header class="top"><h1>${titles[tab]}<small class="who">${esc(SES.nombre)} · ${ROLNOM[SES.rol]}</small></h1></header>
  <main>
-  ${pend?`<div class="alert" style="background:#FFF8E1;border-color:var(--sun);color:#5B4300">${pend} chequeo${pend>1?'s':''} sin enviar al servidor. <button class="mini" data-act="sync" style="margin-left:6px">Enviar ahora</button></div>`:''}
-  <button class="alertbtn" data-act="anew">Reportar una falla</button>
-  <button class="btn" style="width:100%;margin-bottom:6px" data-act="inv">Buscar equipo en el inventario</button>
-  ${alertBanner()}
-  <h2>¿Qué equipo vas a chequear?</h2>
+  ${pend&&tab!=='cta'?`<div class="alert" style="background:#FFF8E1;border-color:var(--sun);color:#5B4300">${pend} registro${pend>1?'s':''} sin enviar al servidor. <button class="mini" data-act="sync" style="margin-left:6px">Enviar ahora</button></div>`:''}
+  ${body}
+ </main>`;
+}
+function vTabChq(){
+ const nRev=esSup()?hist().filter(r=>!r.revisado&&reviewOk(r)).length:0;
+ return `<h2 style="margin-top:4px">Nuevo chequeo</h2>
   <div class="tiles">${Object.entries(TYPES).map(([k,T])=>`<button class="tile" data-act="new" data-t="${k}">${esc(T.name)}<small>${esc(T.sub)}</small></button>`).join('')}</div>
-  <h2>${esSup()?'Chequeos':'Mis chequeos'}</h2>
+  <h2>${esSup()?'Chequeos realizados':'Mis chequeos realizados'}</h2>
   ${esSup()?`<div class="chips"><button class="chip ${S.filtro==='pend'?'on':''}" data-act="filtro" data-f="pend">Por revisar (${nRev})</button><button class="chip ${S.filtro==='all'?'on':''}" data-act="filtro" data-f="all">Todos</button><button class="chip ${S.filtro==='mine'?'on':''}" data-act="filtro" data-f="mine">Míos</button></div>`:''}
-  ${list.length?list.map(r=>{const s=stats(r);const own=r.realizadoCI===SES.ci;return `<button class="hist" data-act="open" data-id="${r.id}"><span><b>${esc(r.equipo||'Sin ID')}</b> · ${esc(TYPES[r.type].name)}<small>${fd(r.fecha)} ${r.hora} · ${esc(r.sede)}${esSup()&&!own?' · '+esc(r.realizado):''}</small></span><span style="display:grid;gap:4px;justify-items:end"><span class="tag ${s.n?'bad':''}">${s.n?s.n+' falla'+(s.n>1?'s':''):'Sin fallas'}</span>${r.sync===false?'<span class="tag warn">Sin enviar</span>':(r.revisado?'<span class="tag grey">Revisado</span>':'')}${r.opEstado==='ausente'?'<span class="tag warn">Sin operador</span>':r.opEstado==='sinpin'?'<span class="tag warn">Firma sin PIN</span>':''}</span></button>`}).join(''):'<div class="empty">No hay chequeos para mostrar.</div>'}
-  ${alertSection()}
-  <h2>Cuenta</h2>
+  ${filtrosHtml('c')}
+  <div id="clist">${checkListHtml()}</div>`;
+}
+function vTabAle(){
+ return `<button class="alertbtn" data-act="anew">Reportar una falla</button>
+  ${alertBanner()}
+  ${filtrosHtml('a')}
+  <div id="alist">${alertListHtml()}</div>`;
+}
+function vTabCta(){
+ return `<div class="card"><b>${esc(SES.nombre)}</b><br><span style="color:var(--mute)">${ROLNOM[SES.rol]} · C.I ${esc(SES.ci)}</span></div>
   <div class="stack">
    <button class="btn" data-act="sync">Actualizar desde el servidor</button>
    ${esSup()&&'Notification' in window&&Notification.permission==='default'?'<button class="btn" data-act="notif">Activar avisos de alertas</button>':''}
    ${SES.rol==='admin'?'<button class="btn" data-act="users">Usuarios y roles</button>':''}
    <div class="row"><button class="btn" data-act="pin">Cambiar mi PIN</button><button class="btn" data-act="exp">Guardar copia</button></div>
-  </div>
- </main>`;
+   <button class="btn red" data-act="logout">Cerrar sesión</button>
+  </div>`;
+}
+/* ---------- Filtros de chequeos y alertas: fecha, tipo de equipo, ID ---------- */
+const nFiltros=w=>{const f=w==='c'?S.fc:S.fa;return (f.desde||f.hasta?1:0)+(f.tipo?1:0)+(f.id?1:0)+(f.estado?1:0)};
+function filtrosHtml(w){
+ const f=w==='c'?S.fc:S.fa,n=nFiltros(w),open=S.fshow[w];
+ const tipos=[...Object.entries(TYPES).map(([k,T])=>[k,T.name]),...(w==='a'?[['otro','Otro']]:[])];
+ return `<div style="margin-bottom:8px"><button class="mini" data-act="ftog" data-w="${w}" aria-expanded="${open}">Filtros${n?' ('+n+')':''} ${open?'▲':'▼'}</button>
+ ${open?`<div class="card" style="margin-top:8px">
+  <div class="row"><div><label>Desde</label><input type="date" data-flt="${w}.desde" value="${f.desde}"></div><div><label>Hasta</label><input type="date" data-flt="${w}.hasta" value="${f.hasta}"></div></div>
+  <div class="chips" style="margin:10px 0 0"><button class="chip" data-act="fquick" data-w="${w}" data-q="hoy">Hoy</button><button class="chip" data-act="fquick" data-w="${w}" data-q="7">7 días</button><button class="chip" data-act="fquick" data-w="${w}" data-q="mes">Este mes</button></div>
+  <label>Tipo de equipo</label><select data-flt="${w}.tipo"><option value="">Todos</option>${tipos.map(([k,nm])=>`<option value="${k}" ${f.tipo===k?'selected':''}>${esc(nm)}</option>`).join('')}</select>
+  <label>ID o TAG del equipo</label><input type="search" data-flt="${w}.id" value="${esc(f.id)}" placeholder="Ej: RS-04" autocapitalize="characters" autocomplete="off">
+  ${w==='a'?`<label>Estado</label><select data-flt="a.estado"><option value="">Todos</option>${Object.entries(ESTNOM).map(([k,nm])=>`<option value="${k}" ${f.estado===k?'selected':''}>${nm}</option>`).join('')}</select>`:''}
+  <button class="mini" style="margin-top:12px" data-act="fclear" data-w="${w}">Limpiar filtros</button>
+ </div>`:''}</div>`;
+}
+function aplicaFiltros(list,f){
+ const q=norm(f.id||'');
+ return list.filter(x=>{
+  if(f.desde&&x.fecha<f.desde)return false;
+  if(f.hasta&&x.fecha>f.hasta)return false;
+  if(f.tipo&&x.type!==f.tipo)return false;
+  if(f.estado&&x.estado!==f.estado)return false;
+  if(q){const e=findEq(x.equipo);if(!(norm(x.equipo).includes(q)||(e&&e.tag&&norm(e.tag).includes(q))))return false}
+  return true;
+ });
+}
+function refreshFlt(w){
+ const box=$('#'+(w==='c'?'clist':'alist'));if(box)box.innerHTML=w==='c'?checkListHtml():alertListHtml();
+ const b=document.querySelector('[data-act=ftog][data-w="'+w+'"]'),n=nFiltros(w);if(b)b.textContent='Filtros'+(n?' ('+n+')':'')+' ▲';
+}
+function checkItemHtml(r){
+ const s=stats(r),own=r.realizadoCI===SES.ci;
+ return `<button class="hist" data-act="open" data-id="${r.id}"><span><b>${esc(r.equipo||'Sin ID')}</b> · ${esc(TYPES[r.type].name)}<small>${fd(r.fecha)} ${r.hora} · ${esc(r.sede)}${esSup()&&!own?' · '+esc(r.realizado):''}</small></span><span style="display:grid;gap:4px;justify-items:end"><span class="tag ${s.n?'bad':''}">${s.n?s.n+' falla'+(s.n>1?'s':''):'Sin fallas'}</span>${r.sync===false?'<span class="tag warn">Sin enviar</span>':(r.revisado?'<span class="tag grey">Revisado</span>':'')}${r.opEstado==='ausente'?'<span class="tag warn">Sin operador</span>':''}</span></button>`;
+}
+function checkListHtml(){
+ const all=hist(),mine=all.filter(r=>r.realizadoCI===SES.ci);
+ let list=esSup()?all:mine;
+ if(esSup()&&S.filtro==='pend')list=list.filter(r=>!r.revisado&&reviewOk(r));
+ else if(esSup()&&S.filtro==='mine')list=mine;
+ list=aplicaFiltros(list,S.fc);
+ return `<p class="cnt">${list.length} resultado${list.length===1?'':'s'}${list.length>60?' (se muestran los 60 más recientes: afina los filtros)':''}</p>`+(list.length?list.slice(0,60).map(checkItemHtml).join(''):'<div class="empty">No hay chequeos'+(nFiltros('c')?' con esos filtros':'')+'.</div>');
 }
 function vPin(){
  return `<header class="top"><button data-act="home">‹ Atrás</button><h1>Cambiar mi PIN</h1></header><main><div class="card">
@@ -360,7 +428,8 @@ function updateProg(){const s=stats(S.rec);$('#progt').textContent=s.done+' de '
 
 /* ---------- Eventos ---------- */
 document.addEventListener('input',e=>{
- const t=e.target;if(t.id==='invq'){S.invq=t.value;$('#invlist').innerHTML=invListHtml();return}
+ const t=e.target;if(t.dataset.flt){const[w,k]=t.dataset.flt.split('.');(w==='c'?S.fc:S.fa)[k]=t.value;refreshFlt(w);return}
+ if(t.id==='invq'){S.invq=t.value;$('#invlist').innerHTML=invListHtml();return}
  if(t.dataset.a&&S.alert){S.alert[t.dataset.a]=t.value;if(t.dataset.a==='equipo')eqLookupAlert(false);return}const r=S.rec;if(!r)return;
  if(t.dataset.f){r[t.dataset.f]=t.value;if(t.dataset.f==='equipo')eqLookupCheck(false)}
  else if(t.dataset.note){(r.it[t.dataset.note]=r.it[t.dataset.note]||{}).note=t.value}
@@ -386,7 +455,15 @@ document.addEventListener('change',async e=>{
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-act]');if(!b)return;
  const a=b.dataset.act,r=S.rec;
- if(a==='cfoto'){getGeo();$('#cFoto').click()}
+ if(a==='tab'){S.tab=b.dataset.t;S.view=S.tab==='inv'?'inv':'home';render()}
+ else if(a==='ftog'){S.fshow[b.dataset.w]=!S.fshow[b.dataset.w];render(true)}
+ else if(a==='fclear'){if(b.dataset.w==='c')S.fc={desde:'',hasta:'',tipo:'',id:''};else S.fa={desde:'',hasta:'',tipo:'',id:'',estado:''};render(true)}
+ else if(a==='fquick'){const f=b.dataset.w==='c'?S.fc:S.fa,hoy=new Date();
+  if(b.dataset.q==='hoy'){f.desde=f.hasta=ymd(hoy)}
+  else if(b.dataset.q==='7'){const d=new Date(hoy);d.setDate(d.getDate()-6);f.desde=ymd(d);f.hasta=ymd(hoy)}
+  else{f.desde=ymd(new Date(hoy.getFullYear(),hoy.getMonth(),1));f.hasta=ymd(hoy)}
+  render(true)}
+ else if(a==='cfoto'){getGeo();$('#cFoto').click()}
  else if(a==='cfotog')$('#cFotoG').click();
  else if(a==='cdel'){r.fotos.splice(+b.dataset.i,1);refreshCThumbs()}
  else if(a==='cdelid'){r.fotoIds.splice(+b.dataset.i,1);refreshCThumbs()}
@@ -467,7 +544,7 @@ async function save(){
  r.equipo=r.equipo.trim();
  store.set('last_sede',r.sede);store.set('last_patio',r.patio);r.sync=false;
  const h=hist().filter(x=>x.id!==r.id);h.unshift(r);if(!saveHist(h))return;
- S.view='result';render();toast('Chequeo guardado');
+ S.tab='chq';S.view='result';render();toast('Chequeo guardado');
  syncPending(true).then(()=>{const x=hist().find(y=>y.id===r.id);if(x&&x.sync&&S.view==='result'&&S.rec&&S.rec.id===r.id){S.rec=x;toast('Enviado al servidor')}});
 }
 
@@ -721,7 +798,7 @@ function invListHtml(){
 }
 function vInv(){
  const rk=RANGO[SES.rol]||0,can=rk>=2,full=rk>=3;
- return `<header class="top"><button data-act="home">‹ Atrás</button><h1>Inventario de equipos<small>${store.get('chq_equipos',[]).length} equipos</small></h1></header><main>
+ return `<header class="top"><h1>Inventario de equipos<small>${store.get('chq_equipos',[]).length} equipos</small></h1></header><main>
  <input id="invq" type="search" placeholder="Buscar por ID, TAG, marca, serial, placa..." value="${esc(S.invq||'')}" autocomplete="off">
  ${can?'<button class="btn pri" style="width:100%;margin-top:10px" data-act="eqnew">Agregar un equipo</button>':''}
  <div id="invlist" style="margin-top:8px">${invListHtml()}</div>
@@ -861,13 +938,14 @@ function alertBanner(){
  if(!esSup())return '';
  const ab=alerts().filter(a=>a.estado==='abierta'&&a.porCI!==SES.ci),cr=ab.filter(a=>a.grav==='C').length;
  if(!ab.length)return '';
- return `<div class="alert">${ab.length} alerta${ab.length>1?'s':''} de falla sin atender${cr?' ('+cr+' crítica'+(cr>1?'s':'')+')':''}. Revísalas más abajo.</div>`;
+ return `<div class="alert">${ab.length} alerta${ab.length>1?'s':''} de falla sin atender${cr?' ('+cr+' crítica'+(cr>1?'s':'')+')':''}. Revísalas en la lista.</div>`;
 }
-function alertSection(){
- const all=alerts();let list=esSup()?all:all.filter(a=>a.porCI===SES.ci);
+function alertListHtml(){
+ let list=esSup()?alerts():alerts().filter(a=>a.porCI===SES.ci);
+ list=aplicaFiltros(list,S.fa);
  const ord={abierta:0,atencion:1,cerrada:2};
- list=list.slice().sort((x,y)=>(ord[x.estado]-ord[y.estado])||((y.fecha+y.hora).localeCompare(x.fecha+x.hora))).slice(0,15);
- return `<h2>${esSup()?'Alertas de falla':'Mis alertas de falla'}</h2>`+(list.length?list.map(a=>`<button class="hist" data-act="aopen" data-id="${a.id}"><span><b>${esc(a.equipo)}</b> · ${esc(a.comp)}<small>${fd(a.fecha)} ${a.hora}${esSup()&&a.porCI!==SES.ci?' · '+esc(a.por):''}</small></span><span style="display:grid;gap:4px;justify-items:end"><span class="tag" style="background:${GCOL[a.grav]}">${GRAV[a.grav].n}</span><span class="tag ${a.sync===false?'warn':'grey'}">${a.sync===false?'Sin enviar':ESTNOM[a.estado]}</span></span></button>`).join(''):'<div class="empty">No hay alertas.</div>');
+ list=list.slice().sort((x,y)=>(ord[x.estado]-ord[y.estado])||((y.fecha+y.hora).localeCompare(x.fecha+x.hora)));
+ return `<p class="cnt">${list.length} resultado${list.length===1?'':'s'}${list.length>60?' (se muestran 60: afina los filtros)':''}</p>`+(list.length?list.slice(0,60).map(a=>`<button class="hist" data-act="aopen" data-id="${a.id}"><span><b>${esc(a.equipo)}</b> · ${esc(a.comp)}<small>${fd(a.fecha)} ${a.hora}${esSup()&&a.porCI!==SES.ci?' · '+esc(a.por):''}</small></span><span style="display:grid;gap:4px;justify-items:end"><span class="tag" style="background:${GCOL[a.grav]}">${GRAV[a.grav].n}</span><span class="tag ${a.sync===false?'warn':'grey'}">${a.sync===false?'Sin enviar':ESTNOM[a.estado]}</span></span></button>`).join(''):'<div class="empty">No hay alertas'+(nFiltros('a')?' con esos filtros':'')+'.</div>');
 }
 function thumbsHtml(){return S.alert.fotos.map((f,i)=>`<div class="th"><img src="${f.d}" alt="Foto ${i+1}"><button type="button" data-act="rmfoto" data-i="${i}" aria-label="Quitar foto ${i+1}">×</button></div>`).join('')}
 function vAFalla(){
@@ -964,7 +1042,7 @@ function saveAlert(){
  a.equipo=a.equipo.trim();a.sync=false;
  store.set('last_sede',a.sede);store.set('last_patio',a.patio);
  const l=alerts().filter(x=>x.id!==a.id);l.push(a);if(!saveAlerts(l))return;
- S.view='aresult';render();toast('Alerta guardada');
+ S.tab='ale';S.view='aresult';render();toast('Alerta guardada');
  syncPending(true).then(()=>{const x=alerts().find(y=>y.id===a.id);if(x&&x.sync&&S.view==='aresult'&&S.alert&&S.alert.id===a.id){S.alert=x;toast('Alerta enviada a supervisores y jefes');render(true)}});
 }
 async function syncAlerts(silent){
@@ -1284,7 +1362,7 @@ async function doLogin(){
   if(store.get('chq_lastci','')!==j.user.ci){['chq_since','chq_asince'].forEach(k=>store.set(k,0));store.set('chq_aseen',[]);store.set('chq_ainit',false);store.set('chq_lastci',j.user.ci)}
   SES={ci:j.user.ci,pin,nombre:j.user.nombre,rol:j.user.rol};store.set('chq_ses',SES);store.set('chq_equipos',j.equipos||[]);
   if(j.version!==SERVER_VERSION)setTimeout(()=>alert('El servidor de Google está desactualizado'+(j.version?' (versión '+j.version+')':'')+'.\nAlgunas funciones nuevas (alertas, inventario) no van a funcionar.\n\nSolución: en Apps Script pega el Codigo.gs nuevo y publica una "Nueva versión" en Implementar > Gestionar implementaciones.'),400);
-  S.view='home';S.filtro=esSup()?'pend':'all';render();syncPending(true);startPoll();
+  S.view='home';S.tab='chq';S.filtro=esSup()?'pend':'all';render();syncPending(true);startPoll();
   try{if(esSup()&&'Notification' in window&&Notification.permission==='default')Notification.requestPermission().then(()=>render(true))}catch(_){}
  }catch(e){toast(errMsg(e))}
 }
