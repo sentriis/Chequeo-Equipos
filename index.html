@@ -211,8 +211,8 @@ async function syncPending(silent){
   l.records.forEach(sr=>{const ex=loc.get(String(sr.id));if(ex&&ex.sync===false)return;sr.sync=true;loc.set(String(sr.id),sr)});
   saveHist([...loc.values()]);
   store.set('chq_since',Math.max(store.get('chq_since',0),...l.records.map(r=>r.srv||0)));
-  try{await syncActs(silent)}catch(e){if(e&&e.code==='accion'){if(!S.warnOld){S.warnOld=1;toast(errMsg(e))}}else if(e&&e.code==='red')throw e;else if(!silent)toast(errMsg(e))}
   try{await syncAlerts(silent)}catch(e){if(e&&e.code==='accion'){if(!S.warnOld){S.warnOld=1;toast(errMsg(e))}}else if(e&&e.code==='red')throw e;else if(!silent)toast(errMsg(e))}
+  try{await syncActs(silent)}catch(e){if(e&&e.code==='accion'){if(!S.warnOld){S.warnOld=1;toast(errMsg(e))}}else if(e&&e.code==='red')throw e;else if(!silent)toast(errMsg(e))}
   try{const e=await api('equipos');store.set('chq_equipos',e.equipos)}catch(_){}
   if(!silent)toast(pend.length?'Chequeos enviados y actualizados':'Todo actualizado');
  }catch(e){if(!silent)toast(errMsg(e))}
@@ -220,7 +220,7 @@ async function syncPending(silent){
 }
 window.addEventListener('online',()=>syncPending(true));
 const hist=()=>store.get('chq_hist',[]);
-const SERVER_VERSION='2026-10-14-n';   // debe coincidir con VERSION en Codigo.gs
+const SERVER_VERSION='2026-10-14-o';   // debe coincidir con VERSION en Codigo.gs
 const API_URL='';   // <- Pega aquí la dirección del servidor (termina en /exec). Si la dejas vacía, la app la pedirá al entrar.
 function newRec(type){const d=new Date(),T=TYPES[type];return{id:Date.now().toString(36),type,fecha:ymd(d),hora:hm(d),sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),tipo:T.tipoDef,equipo:'',p1:'',p2:'',q1:'',q2:'',realizado:SES?SES.nombre:'',realizadoCI:SES?SES.ci:'',revisado:'',revisadoCI:'',revisadoFecha:'',obs:'',it:{},sync:false,opEstado:'',opFoto:'',opFotoId:'',opTs:0,opHora:'',opGeo:null,opW:0,opH:0,confTs:0,fotos:[],fotoIds:[]}}
 function suggestions(key,extra){const h=hist();return[...new Set([...(extra||[]),...h.map(r=>r[key]).filter(Boolean)])].slice(0,60)}
@@ -249,6 +249,7 @@ function render(keep){
  if(S.view==='form')updateProg();
  if(S.view==='aresult'){loadAPhotos();loadAEv()}
  if(S.view==='avresult')loadVFotos();
+ if(S.view==='avform')loadAltEq();
  if(S.view==='result'){loadOpFoto();loadCFotos()}
 }
 function vLogin(){
@@ -440,7 +441,7 @@ document.addEventListener('input',e=>{
  const t=e.target;if(t.dataset.flt){const[w,k]=t.dataset.flt.split('.');fobj(w)[k]=t.value;refreshFlt(w);return}
  if(t.id==='invq'){S.invq=t.value;$('#invlist').innerHTML=invListHtml();return}
  if(t.dataset.fl&&S.act){const[i,k]=t.dataset.fl.split('.');S.act.fluidos[+i][k]=t.value;return}
- if(t.dataset.v&&S.act){S.act[t.dataset.v]=t.value;if(t.dataset.v==='equipo'){eqLookupAct(false);refreshLec()}if(t.dataset.v==='type'){if(!S.act.lecManual)S.act.lecU=lecDef(S.act.type);refreshLec()}if(t.dataset.v==='cat')cambiaCat();return}
+ if(t.dataset.v&&S.act){S.act[t.dataset.v]=t.value;if(t.dataset.v==='equipo'){eqLookupAct(false);refreshLec();refreshAlt()}if(t.dataset.v==='type'){if(!S.act.lecManual)S.act.lecU=lecDef(S.act.type);refreshLec()}if(t.dataset.v==='cat')cambiaCat();return}
  if(t.dataset.a&&S.alert){S.alert[t.dataset.a]=t.value;if(t.dataset.a==='equipo')eqLookupAlert(false);return}const r=S.rec;if(!r)return;
  if(t.dataset.f){r[t.dataset.f]=t.value;if(t.dataset.f==='equipo')eqLookupCheck(false)}
  else if(t.dataset.note){(r.it[t.dataset.note]=r.it[t.dataset.note]||{}).note=t.value}
@@ -448,7 +449,8 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',async e=>{
  if(e.target.dataset&&e.target.dataset.f==='equipo'){eqLookupCheck(true);return}
  if(e.target.dataset&&e.target.dataset.a==='equipo'){eqLookupAlert(true);return}
- if(e.target.dataset&&e.target.dataset.v==='equipo'){eqLookupAct(true);return}
+ if(e.target.dataset&&e.target.dataset.alt&&S.act){const r=S.act,id=e.target.dataset.alt,i=r.alertas.indexOf(id);if(e.target.checked){if(i<0){if(r.alertas.length>=5){e.target.checked=false;toast('Máximo 5 alertas por actividad');return}r.alertas.push(id)}}else if(i>=0)r.alertas.splice(i,1);return}
+ if(e.target.dataset&&e.target.dataset.v==='equipo'){eqLookupAct(true);loadAltEq();return}
  if(e.target.id==='sinc'){S.act.sinContador=e.target.checked;if(e.target.checked)S.act.horometro='';refreshLec();return}
  if(e.target.id==='vFoto'||e.target.id==='vFotoG'){const cam=e.target.id==='vFoto',files=[...e.target.files];e.target.value='';await addActPhotos(files,cam);return}
  if(e.target.id==='invfile'){const f=e.target.files[0];e.target.value='';if(f)await importInventario(f);return}
@@ -471,6 +473,7 @@ document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-act]');if(!b)return;
  const a=b.dataset.act,r=S.rec;
  if(a==='vnew'){S.act=newAct(b.dataset.c);S.view='avform';render()}
+ else if(a==='a2v'){const al=S.alert,v=newAct('rep');v.equipo=al.equipo;v.type=al.type;v.sede=al.sede;v.patio=al.patio||'';v.alertas=[al.id];v.lecU=lecDef(v.type);S.act=v;S.tab='act';S.view='avform';render()}
  else if(a==='vopen'){S.act=acts().find(x=>x.id===b.dataset.id);if(S.act){S.view='avresult';render()}}
  else if(a==='vedit'){S.view='avform';render()}
  else if(a==='vback'){S.view='home';render()}
@@ -528,7 +531,7 @@ document.addEventListener('click',async e=>{
  else if(a==='axlsx')exportAlert(S.alert,'xlsx');
  else if(a==='apdf')exportAlert(S.alert,'pdf');
  else if(a==='aatt'){try{const j=await api('attend',{id:S.alert.id,fotos:S.ev});S.ev=[];S.alert=mergeAlert(j.alert);toast('Alerta en atención');render(true)}catch(e){toast(errMsg(e))}}
- else if(a==='aclose'){const nota=prompt('¿Qué se hizo para resolverla? (comentario de cierre)');if(!nota||!nota.trim())return;try{const j=await api('close',{id:S.alert.id,nota:nota.trim(),fotos:S.ev});S.ev=[];S.alert=mergeAlert(j.alert);toast('Alerta cerrada');render(true)}catch(e){toast(errMsg(e))}}
+ else if(a==='aclose'){const enProc=relList(S.alert).filter(x=>x.estado==='proceso');if(enProc.length&&!confirm('Hay '+enProc.length+' actividad(es) relacionada(s) todavía en proceso. ¿Cerrar la alerta igual?'))return;const nota=prompt('¿Qué se hizo para resolverla? (comentario de cierre)');if(!nota||!nota.trim())return;try{const j=await api('close',{id:S.alert.id,nota:nota.trim(),fotos:S.ev});S.ev=[];S.alert=mergeAlert(j.alert);toast('Alerta cerrada');render(true)}catch(e){toast(errMsg(e))}}
  else if(a==='aevid'){if(!S.ev.length){toast('Agrega al menos una foto de evidencia');return}try{const j=await api('addEv',{id:S.alert.id,fotos:S.ev});S.ev=[];S.alert=mergeAlert(j.alert);toast('Fotos de evidencia guardadas');render(true)}catch(e){toast(errMsg(e))}}
  else if(a==='efoto'){getGeo();$('#eFoto').click()}
  else if(a==='efotog')$('#eFotoG').click();
@@ -971,6 +974,7 @@ function alertMsg(a){
  if(a.grav==='C')m+='\n\nEquipo detenido: no operar hasta que el supervisor autorice.';
  if(a.estado!=='abierta')m+='\n\nEstado: '+ESTNOM[a.estado]+(a.atiende?' - '+a.atiende:'')+(a.cierreNota?'\nCierre: '+a.cierreNota:'');
  if(a.fidsEv&&a.fidsEv.length)m+='\nFotos de evidencia de la atención: '+a.fidsEv.length;
+ {const rl=relList(a);if(rl.length)m+='\nActividades relacionadas: '+rl.length+' ('+rl.map(x=>(CATS[x.cat]||CATS.rep).n+' '+fd(x.fecha)+(x.estado==='proceso'?' - en proceso':'')).join(', ')+')'}
  return m;
 }
 function alertBanner(){
@@ -984,7 +988,7 @@ function alertListHtml(){
  list=aplicaFiltros(list,S.fa);
  const ord={abierta:0,atencion:1,cerrada:2};
  list=list.slice().sort((x,y)=>(ord[x.estado]-ord[y.estado])||((y.fecha+y.hora).localeCompare(x.fecha+x.hora)));
- return `<p class="cnt">${list.length} resultado${list.length===1?'':'s'}${list.length>60?' (se muestran 60: afina los filtros)':''}</p>`+(list.length?list.slice(0,60).map(a=>`<button class="hist" data-act="aopen" data-id="${a.id}"><span><b>${esc(a.equipo)}</b> · ${esc(a.comp)}<small>${fd(a.fecha)} ${a.hora}${esSup()&&a.porCI!==SES.ci?' · '+esc(a.por):''}</small></span><span style="display:grid;gap:4px;justify-items:end"><span class="tag" style="background:${GCOL[a.grav]}">${GRAV[a.grav].n}</span><span class="tag ${a.sync===false?'warn':'grey'}">${a.sync===false?'Sin enviar':ESTNOM[a.estado]}</span></span></button>`).join(''):'<div class="empty">No hay alertas'+(nFiltros('a')?' con esos filtros':'')+'.</div>');
+ return `<p class="cnt">${list.length} resultado${list.length===1?'':'s'}${list.length>60?' (se muestran 60: afina los filtros)':''}</p>`+(list.length?list.slice(0,60).map(a=>`<button class="hist" data-act="aopen" data-id="${a.id}"><span><b>${esc(a.equipo)}</b> · ${esc(a.comp)}<small>${fd(a.fecha)} ${a.hora}${esSup()&&a.porCI!==SES.ci?' · '+esc(a.por):''}</small></span><span style="display:grid;gap:4px;justify-items:end"><span class="tag" style="background:${GCOL[a.grav]}">${GRAV[a.grav].n}</span><span class="tag ${a.sync===false?'warn':'grey'}">${a.sync===false?'Sin enviar':ESTNOM[a.estado]}</span>${relList(a).length?`<span class="tag grey">${relList(a).length} act.</span>`:''}</span></button>`).join(''):'<div class="empty">No hay alertas'+(nFiltros('a')?' con esos filtros':'')+'.</div>');
 }
 function thumbsHtml(){return S.alert.fotos.map((f,i)=>`<div class="th"><img src="${f.d}" alt="Foto ${i+1}"><button type="button" data-act="rmfoto" data-i="${i}" aria-label="Quitar foto ${i+1}">×</button></div>`).join('')}
 function vAFalla(){
@@ -1018,6 +1022,7 @@ function vAResult(){
  ${a.sync===false?'<div class="alert" style="background:#FFF8E1;border-color:var(--sun);color:#5B4300">Esta alerta aún no se envió al servidor. Se enviará cuando haya internet.</div>':''}
  <div class="card"><pre style="white-space:pre-wrap;margin:0;font:14px/1.4 inherit;font-family:inherit">${esc(alertMsg(a))}</pre></div>
  <div id="aph"></div>
+ ${arelHtml(a)}
  <div id="aev">${(a.fidsEv&&a.fidsEv.length)?'<h2>Evidencia de la atención</h2><div class="empty">Cargando fotos...</div>':''}</div>
  ${(()=>{const e=findEq(a.equipo);return e?'<h2>Datos del equipo</h2>'+eqCard(e):''})()}
  ${canAct?`<h2>Evidencia de la atención</h2>
@@ -1029,6 +1034,7 @@ function vAResult(){
  <div class="stack">
   <div class="row"><button class="btn wa" data-act="awa">WhatsApp</button><button class="btn tg" data-act="atg">Telegram</button></div>
   <div class="row"><button class="btn" data-act="axlsx">Excel</button><button class="btn" data-act="apdf">PDF</button></div>
+  ${a.estado!=='cerrada'?'<button class="btn" data-act="a2v">Registrar actividad para esta alerta</button>':''}
   ${canAct&&a.estado==='abierta'?'<button class="btn pri" data-act="aatt">Atender esta alerta</button>':''}
   ${canAct?'<button class="btn pri" data-act="aclose">Cerrar con comentario</button>':''}
   ${canAct?'<button class="btn" data-act="aevid">Guardar solo las fotos de evidencia</button>':''}
@@ -1229,6 +1235,12 @@ async function buildAlertXlsx(a,photos,ev){
   }
   nx+=filas;
  }
+ {const rl=relList(a);
+  if(rl.length){
+   ws.getRow(nx).height=15;m(nx,1,nx,12,'ACTIVIDADES RELACIONADAS',{bold:true,size:12,h:'center',box:true,fill:GREY});nx++;
+   ws.getRow(nx).height=18;m(nx,1,nx,4,'ACTIVIDAD',{bold:true,h:'center',box:true,fill:GREY});m(nx,5,nx,7,'FECHA',{bold:true,h:'center',box:true,fill:GREY});m(nx,8,nx,10,'REALIZADA POR',{bold:true,h:'center',box:true,fill:GREY});m(nx,11,nx,12,'ESTADO',{bold:true,h:'center',box:true,fill:GREY});nx++;
+   rl.forEach(x=>{ws.getRow(nx).height=18;m(nx,1,nx,4,(CATS[x.cat]||CATS.rep).n,{box:true});m(nx,5,nx,7,fd(x.fecha)+' '+x.hora,{box:true,h:'center'});m(nx,8,nx,10,x.por||'',{box:true});m(nx,11,nx,12,VEST[x.estado]||'',{box:true,h:'center'});nx++});
+  }}
  ws.getRow(nx).height=8.25;m(nx,1,nx,12,'',{fill:GREY});
  [['REPORTADO POR:',a.por,'ATENDIDO POR:',a.atiende],['FIRMA:','','FIRMA:',''],['FECHA:',fd(a.fecha),'FECHA:',fd(a.atiendeFecha)]].forEach((s,i)=>{const rr=nx+1+i;ws.getRow(rr).height=23.25;
   m(rr,1,rr,2,s[0],{bold:true,h:'right',box:true,fill:GREY});m(rr,3,rr,6,s[1],{box:true});
@@ -1308,6 +1320,13 @@ function buildAlertPdf(a,photos,ev){
    y+=50;
   }
  }
+ {const rl=relList(a);
+  if(rl.length){
+   if(y+30>287){d.addPage();y=12}else y+=2;
+   cell(0,11,y,5,'ACTIVIDADES RELACIONADAS',{bold:true,align:'center',box:true,fill:GR});y+=5;
+   cell(0,3,y,6,'ACTIVIDAD',{bold:true,align:'center',box:true,fill:GR});cell(4,6,y,6,'FECHA',{bold:true,align:'center',box:true,fill:GR});cell(7,9,y,6,'REALIZADA POR',{bold:true,align:'center',box:true,fill:GR});cell(10,11,y,6,'ESTADO',{bold:true,align:'center',box:true,fill:GR});y+=6;
+   rl.forEach(x=>{if(y+6>287){d.addPage();y=12}cell(0,3,y,6,(CATS[x.cat]||CATS.rep).n,{box:true});cell(4,6,y,6,fd(x.fecha)+' '+x.hora,{box:true,align:'center'});cell(7,9,y,6,x.por||'',{box:true});cell(10,11,y,6,VEST[x.estado]||'',{box:true,align:'center'});y+=6});
+  }}
  if(y+32>287){d.addPage();y=12}
  cell(0,11,y,2.5,'',{fill:GR});y+=2.5;
  [['REPORTADO POR:',a.por,'ATENDIDO POR:',a.atiende],['FIRMA:','','FIRMA:',''],['FECHA:',fd(a.fecha),'FECHA:',fd(a.atiendeFecha)]].forEach(s=>{
@@ -1459,6 +1478,59 @@ function lecHtml(r){
 const lecSig=r=>[r.lecU,r.sinContador?1:0,JSON.stringify(ultimaLectura(r.equipo,r.lecU,r.id))].join('|');
 function refreshLec(){const b=$('#lecbox');if(!b||!S.act)return;const sg=lecSig(S.act);if(b.dataset.sig===sg)return;b.dataset.sig=sg;b.innerHTML=lecHtml(S.act)}
 
+/* ---------- Relación entre actividades y alertas de falla ---------- */
+// Alerta -> actividades que la atienden: lo que informa el servidor (rel) más lo que hay en este teléfono.
+function relList(a){
+ const m=new Map();
+ (a.rel||[]).forEach(x=>m.set(x.id,{id:x.id,cat:x.cat,fecha:x.fecha,hora:x.hora,estado:x.estado,por:x.por}));
+ acts().filter(x=>(x.alertas||[]).includes(a.id)).forEach(x=>m.set(x.id,{id:x.id,cat:x.cat,fecha:x.fecha,hora:x.hora,estado:x.estado,por:x.por}));
+ return [...m.values()].sort((x,y)=>(y.fecha+y.hora).localeCompare(x.fecha+x.hora));
+}
+// Actividad -> datos mínimos de una alerta: la alerta local si se puede ver, si no la copia que mandó el servidor.
+function altInfoOne(id,r){
+ const a=alerts().find(x=>x.id===id);
+ if(a)return{id,equipo:a.equipo,comp:a.comp,grav:a.grav,estado:a.estado,fecha:a.fecha,hora:a.hora};
+ const x=((r&&r.alertasInfo)||[]).find(y=>y.id===id);if(x)return x;
+ for(const k in (S.altEq||{})){const y=S.altEq[k].find(z=>z.id===id);if(y)return y}
+ return{id,equipo:'',comp:'(alerta no disponible)',grav:'M',estado:'',fecha:'',hora:''};
+}
+function candAlertas(r){
+ const k=String(r.equipo||'').trim().toUpperCase(),m=new Map();
+ const put=x=>{if(x&&!m.has(x.id))m.set(x.id,x)};
+ if(k){
+  alerts().filter(a=>String(a.equipo).trim().toUpperCase()===k&&a.estado!=='cerrada').forEach(a=>put({id:a.id,equipo:a.equipo,comp:a.comp,grav:a.grav,estado:a.estado,fecha:a.fecha,hora:a.hora}));
+  ((S.altEq||{})[k]||[]).forEach(put);
+ }
+ (r.alertas||[]).forEach(id=>put(altInfoOne(id,r)));
+ return [...m.values()].sort((x,y)=>(y.fecha+y.hora).localeCompare(x.fecha+x.hora));
+}
+function altHtml(r){
+ const c=candAlertas(r);if(!c.length)return '';
+ return `<h2>Relacionar con una alerta de falla</h2><div class="card" style="padding:8px"><p style="margin:0 0 4px;font-size:13px;color:var(--mute)">Marca la falla que atiende esta actividad (opcional).</p>${c.map(x=>`<label style="display:flex;gap:10px;align-items:flex-start;margin:8px 0;color:var(--ink)"><input type="checkbox" data-alt="${esc(x.id)}" ${r.alertas.includes(x.id)?'checked':''} style="width:auto;margin-top:3px"><span><b>${esc(x.comp)}</b> · <span style="color:${GCOL[x.grav]||'#5B6573'};font-weight:700">${esc((GRAV[x.grav]||{n:''}).n)}</span><br><small style="color:var(--mute)">${x.fecha?fd(x.fecha)+' '+esc(x.hora)+' · ':''}${esc(ESTNOM[x.estado]||'')}</small></span></label>`).join('')}</div>`;
+}
+// La firma solo cuenta las alertas candidatas: así la lista no se redibuja (y no se pierde un toque) si nada cambió
+const altSig=r=>candAlertas(r).map(x=>x.id).join(',');
+function refreshAlt(){const b=$('#altbox');if(!b||!S.act)return;const sg=altSig(S.act);if(b.dataset.sig===sg)return;b.dataset.sig=sg;b.innerHTML=altHtml(S.act)}
+async function loadAltEq(){
+ const r=S.act,eq=r?String(r.equipo||'').trim():'';if(!eq)return;
+ const k=eq.toUpperCase();S.altEq=S.altEq||{};S.altT=S.altT||{};
+ if(S.altT[k]&&Date.now()-S.altT[k]<60000)return;
+ S.altT[k]=Date.now();
+ try{const j=await api('alertasEquipo',{equipo:eq});S.altEq[k]=j.alertas||[];refreshAlt()}catch(e){S.altT[k]=0}
+}
+function arelHtml(a){
+ const l=relList(a);if(!l.length)return '';
+ return `<h2>Actividades relacionadas (${l.length})</h2>`+l.map(x=>{const c=CATS[x.cat]||CATS.rep,loc=acts().find(y=>y.id===x.id);
+  const inner=`<span><b>${esc(c.n)}</b><small>${fd(x.fecha)} ${esc(x.hora)}${x.por?' · '+esc(x.por):''}</small></span><span class="tag ${x.estado==='proceso'?'warn':'grey'}">${esc(VEST[x.estado]||'')}</span>`;
+  return loc?`<button class="hist" data-act="vopen" data-id="${esc(x.id)}">${inner}</button>`:`<div class="hist" style="cursor:default">${inner}</div>`}).join('');
+}
+function altsRelHtml(r){
+ const l=(r.alertas||[]).map(id=>altInfoOne(id,r));if(!l.length)return '';
+ return `<h2>Alertas de falla relacionadas (${l.length})</h2>`+l.map(x=>{const loc=alerts().find(y=>y.id===x.id);
+  const inner=`<span><b>${esc(x.comp)}</b><small>${x.fecha?fd(x.fecha)+' '+esc(x.hora):''}${x.equipo?' · '+esc(x.equipo):''}</small></span><span style="display:grid;gap:4px;justify-items:end"><span class="tag" style="background:${GCOL[x.grav]||'#5B6573'}">${esc((GRAV[x.grav]||{n:''}).n)}</span><span class="tag grey">${esc(ESTNOM[x.estado]||'')}</span></span>`;
+  return loc?`<button class="hist" data-act="aopen" data-id="${esc(x.id)}">${inner}</button>`:`<div class="hist" style="cursor:default">${inner}</div>`}).join('');
+}
+
 /* ---------- Actividades: reparaciones, nivelación de fluidos y mantenimiento ---------- */
 const CATS={
  rep:{n:'Reparación',col:'#B3261E',sub:'Arreglos y reparaciones del equipo',tareas:['Cambio de pieza','Soldadura','Reparación hidráulica','Reparación eléctrica','Reparación de frenos','Neumáticos / ruedas','Ajuste / calibración','Pintura / latonería','Otro']},
@@ -1473,8 +1545,8 @@ const acts=()=>store.get('chq_acts',[]);
 function saveActs(l){return store.set('chq_acts',l.sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora)).slice(0,300))}
 const pendientesV=()=>acts().filter(a=>a.sync===false&&a.porCI===(SES&&SES.ci));
 const puedeEditarAct=a=>a.porCI===SES.ci&&(a.sync===false||(Date.now()-(a.creadoTs||0))<86400000);   // el autor corrige hasta 24 h después
-function newAct(cat){const d=new Date();return{id:'V'+Date.now().toString(36),cat,type:'maq',equipo:'',sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),fecha:ymd(d),hora:hm(d),tareas:[],desc:'',fluidos:cat==='flu'?[{f:'',q:'',u:'L'}]:[],repuestos:'',horas:'',horometro:'',lecU:'h',sinContador:false,lecManual:false,estado:'completada',fotos:[],fotoIds:[],por:SES.nombre,porCI:SES.ci,porRol:SES.rol,confTs:0,sync:false}}
-function normAct(r){if(!r.lecU)r.lecU=(r.horometro!==''&&r.horometro!=null)?'h':lecDef(r.type);if(r.horometro==null)r.horometro='';if(r.horas==null)r.horas='';r.fotos=r.fotos||[];r.fotoIds=r.fotoIds||[];r.tareas=r.tareas||[];r.fluidos=r.fluidos||[];if(r.cat==='flu'&&!r.fluidos.length)r.fluidos=[{f:'',q:'',u:'L'}];return r}
+function newAct(cat){const d=new Date();return{id:'V'+Date.now().toString(36),cat,alertas:[],type:'maq',equipo:'',sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),fecha:ymd(d),hora:hm(d),tareas:[],desc:'',fluidos:cat==='flu'?[{f:'',q:'',u:'L'}]:[],repuestos:'',horas:'',horometro:'',lecU:'h',sinContador:false,lecManual:false,estado:'completada',fotos:[],fotoIds:[],por:SES.nombre,porCI:SES.ci,porRol:SES.rol,confTs:0,sync:false}}
+function normAct(r){r.alertas=r.alertas||[];if(!r.lecU)r.lecU=(r.horometro!==''&&r.horometro!=null)?'h':lecDef(r.type);if(r.horometro==null)r.horometro='';if(r.horas==null)r.horas='';r.fotos=r.fotos||[];r.fotoIds=r.fotoIds||[];r.tareas=r.tareas||[];r.fluidos=r.fluidos||[];if(r.cat==='flu'&&!r.fluidos.length)r.fluidos=[{f:'',q:'',u:'L'}];return r}
 function validAct(r){
  if(!String(r.equipo).trim())return 'Falta el ID del equipo';
  if(r.cat==='flu'){
@@ -1496,6 +1568,7 @@ function actMsg(r){
  m+='Equipo: '+r.equipo+' ('+eqName(r.type)+')\n'+eqDetalle(r.equipo)+'Sede / Patio: '+r.sede+(r.patio?' / '+r.patio:'')+'\nFecha: '+fd(r.fecha)+' '+r.hora+'\n';
  if((r.tareas||[]).length)m+='Trabajos: '+r.tareas.join(', ')+'\n';
  if(fl.length)m+='Fluidos repuestos: '+fl.map(x=>x.f+' '+x.q+' '+x.u).join('; ')+'\n';
+ {const al=(r.alertas||[]).map(id=>altInfoOne(id,r));if(al.length)m+='Relacionada con alerta(s) de falla: '+al.map(x=>x.comp+' ('+((GRAV[x.grav]||{}).n||'?')+(x.fecha?' '+fd(x.fecha):'')+')').join('; ')+'\n'}
  if((r.desc||'').trim())m+='\n'+r.desc.trim()+'\n';
  if((r.repuestos||'').trim())m+='\nRepuestos / materiales: '+r.repuestos.trim()+'\n';
  const dt=[];if(r.horas!==''&&r.horas!=null)dt.push('Duración del trabajo: '+r.horas+' h');dt.push('Lectura del equipo: '+lecTxt(r));m+=dt.join(' · ')+'\n';
@@ -1545,6 +1618,7 @@ function vAvForm(){
   <div class="row"><div><label>Sede</label><select data-v="sede">${SEDES.map(s=>`<option ${s===r.sede?'selected':''}>${s}</option>`).join('')}</select></div><div><label>Patio</label><input data-v="patio" value="${esc(r.patio)}"></div></div>
  </div>
  ${eqDatalist('dlEqV',null)}
+ <div id="altbox" data-sig="${esc(altSig(r))}">${altHtml(r)}</div>
  ${flu?`<h2>Fluidos repuestos *</h2><div id="fluids">${fluidosHtml(r)}</div>`:`<h2>Trabajos realizados</h2><div id="tchips" class="chips wrap">${tareasHtml(r)}</div>`}
  <h2>${flu?'Observaciones':'Descripción de la actividad *'}</h2>
  <textarea data-v="desc" placeholder="${flu?'Opcional: nivel encontrado, fugas, motivo...':'¿Qué se hizo? Pieza, falla, procedimiento...'}">${esc(r.desc)}</textarea>
@@ -1602,6 +1676,7 @@ function vAvResult(){
  ${a.sync===false?'<div class="alert" style="background:#FFF8E1;border-color:var(--sun);color:#5B4300">Esta actividad aún no se envió al servidor. Se enviará cuando haya internet.</div>':''}
  <div class="card"><pre style="white-space:pre-wrap;margin:0;font:14px/1.4 inherit;font-family:inherit">${esc(actMsg(a))}</pre></div>
  <div id="vfotos">${nFC(a)?'<h2>Fotos</h2><div class="empty">Cargando fotos...</div>':''}</div>
+ ${altsRelHtml(a)}
  ${a.confTs?`<div class="card" style="border-left:6px solid var(--ok)">Confirmado digitalmente por <b>${esc(a.por)}</b> (${esc(rolNom(a.porRol))})<br><span style="color:var(--mute);font-size:14px">C.I ${esc(a.porCI)} · ${fdm(a.confTs)}</span></div>`:''}
  ${(()=>{const e=findEq(a.equipo);return e?'<h2>Datos del equipo</h2>'+eqCard(e):''})()}
  <h2>Compartir</h2>
@@ -1660,6 +1735,12 @@ async function buildActXlsx(r,photos){
   fl.forEach(x=>{ws.getRow(R).height=18;m(R,1,R,6,x.f,{box:true});m(R,7,R,9,String(x.q),{box:true,h:'center'});m(R,10,R,12,x.u,{box:true,h:'center'});R++});
  }
  if((r.repuestos||'').trim()){sec('REPUESTOS / MATERIALES USADOS');body(r.repuestos,2)}
+ const alr=(r.alertas||[]).map(id=>altInfoOne(id,r));
+ if(alr.length){
+  sec('ALERTAS DE FALLA RELACIONADAS');
+  ws.getRow(R).height=18;m(R,1,R,4,'COMPONENTE',{bold:true,h:'center',box:true,fill:GREY});m(R,5,R,6,'GRAVEDAD',{bold:true,h:'center',box:true,fill:GREY});m(R,7,R,9,'FECHA',{bold:true,h:'center',box:true,fill:GREY});m(R,10,R,12,'ESTADO',{bold:true,h:'center',box:true,fill:GREY});R++;
+  alr.forEach(x=>{ws.getRow(R).height=18;m(R,1,R,4,x.comp,{box:true});m(R,5,R,6,(GRAV[x.grav]||{n:''}).n,{box:true,h:'center'});m(R,7,R,9,x.fecha?fd(x.fecha)+' '+x.hora:'',{box:true,h:'center'});m(R,10,R,12,ESTNOM[x.estado]||'',{box:true,h:'center'});R++});
+ }
  if(photos&&photos.length){
   sec('FOTOS');
   const filas=Math.ceil(photos.length/3);
@@ -1708,6 +1789,12 @@ function buildActPdf(r,photos){
   fl.forEach(x=>{need(6);cell(0,5,y,6,x.f,{size:9,box:true});cell(6,8,y,6,String(x.q),{size:9,box:true,align:'center'});cell(9,11,y,6,x.u,{size:9,box:true,align:'center'});y+=6});
  }
  if((r.repuestos||'').trim()){sec('REPUESTOS / MATERIALES USADOS');body(r.repuestos,12)}
+ const alr=(r.alertas||[]).map(id=>altInfoOne(id,r));
+ if(alr.length){
+  sec('ALERTAS DE FALLA RELACIONADAS');
+  need(6);cell(0,3,y,6,'COMPONENTE',{bold:true,size:9,align:'center',box:true,fill:GR});cell(4,5,y,6,'GRAVEDAD',{bold:true,size:9,align:'center',box:true,fill:GR});cell(6,8,y,6,'FECHA',{bold:true,size:9,align:'center',box:true,fill:GR});cell(9,11,y,6,'ESTADO',{bold:true,size:9,align:'center',box:true,fill:GR});y+=6;
+  alr.forEach(x=>{need(6);cell(0,3,y,6,x.comp,{size:9,box:true});cell(4,5,y,6,(GRAV[x.grav]||{n:''}).n,{size:9,box:true,align:'center'});cell(6,8,y,6,x.fecha?fd(x.fecha)+' '+x.hora:'',{size:9,box:true,align:'center'});cell(9,11,y,6,ESTNOM[x.estado]||'',{size:9,box:true,align:'center'});y+=6});
+ }
  if(photos&&photos.length){
   sec('FOTOS');
   const filas=Math.ceil(photos.length/3);
