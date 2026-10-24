@@ -170,7 +170,7 @@ const S={view:'home',tab:'chq',ev:[],act:null,fv:{desde:'',hasta:'',tipo:'',id:'
 const ROLNOM={tecnico:'Técnico',supervisor:'Supervisor',jefe:'Jefe de departamento',admin:'Administrador'};
 const RANGO={tecnico:1,supervisor:2,jefe:3,admin:4};
 let SES=store.get('chq_ses',null);               // {ci,pin,nombre,rol}
-const apiUrl=()=>(store.get('api_url','')||API_URL||'').trim();
+const apiUrl=()=>(store.get('api_url','')||API_URL||'https://script.google.com/macros/s/AKfycbyUmpHs0YNOvEMOCI2wh6arnuyQur0OjVbDO7YD2pE8mMxjAj_uv4dXAU5Bot-lvi0x/exec').trim();
 const esSup=()=>SES&&(RANGO[SES.rol]||0)>=2;
 // Revisa quien tiene rango mayor al de quien hizo el chequeo (el administrador también revisa a otros administradores). Nadie revisa lo suyo.
 const reviewOk=r=>esSup()&&r.realizadoCI!==SES.ci&&((RANGO[SES.rol]||0)>(RANGO[r.realizadoRol||'tecnico']||1)||SES.rol==='admin');
