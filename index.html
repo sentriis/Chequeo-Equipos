@@ -170,7 +170,7 @@ const S={view:'home',tab:'chq',ev:[],act:null,fv:{desde:'',hasta:'',tipo:'',id:'
 const ROLNOM={tecnico:'Técnico',supervisor:'Supervisor',jefe:'Jefe de departamento',admin:'Administrador'};
 const RANGO={tecnico:1,supervisor:2,jefe:3,admin:4};
 let SES=store.get('chq_ses',null);               // {ci,pin,nombre,rol}
-const apiUrl=()=>(store.get('api_url','')||API_URL||'https://script.google.com/macros/s/AKfycbyUmpHs0YNOvEMOCI2wh6arnuyQur0OjVbDO7YD2pE8mMxjAj_uv4dXAU5Bot-lvi0x/exec').trim();
+const apiUrl=()=>(store.get('api_url','')||API_URL||'').trim();
 const esSup=()=>SES&&(RANGO[SES.rol]||0)>=2;
 // Revisa quien tiene rango mayor al de quien hizo el chequeo (el administrador también revisa a otros administradores). Nadie revisa lo suyo.
 const reviewOk=r=>esSup()&&r.realizadoCI!==SES.ci&&((RANGO[SES.rol]||0)>(RANGO[r.realizadoRol||'tecnico']||1)||SES.rol==='admin');
@@ -220,7 +220,7 @@ async function syncPending(silent){
 }
 window.addEventListener('online',()=>syncPending(true));
 const hist=()=>store.get('chq_hist',[]);
-const SERVER_VERSION='2026-10-14-o';   // debe coincidir con VERSION en Codigo.gs
+const SERVER_VERSION='2026-10-14-p';   // debe coincidir con VERSION en Codigo.gs
 const API_URL='';   // <- Pega aquí la dirección del servidor (termina en /exec). Si la dejas vacía, la app la pedirá al entrar.
 function newRec(type){const d=new Date(),T=TYPES[type];return{id:Date.now().toString(36),type,fecha:ymd(d),hora:hm(d),sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),tipo:T.tipoDef,equipo:'',p1:'',p2:'',q1:'',q2:'',realizado:SES?SES.nombre:'',realizadoCI:SES?SES.ci:'',revisado:'',revisadoCI:'',revisadoFecha:'',obs:'',it:{},sync:false,opEstado:'',opFoto:'',opFotoId:'',opTs:0,opHora:'',opGeo:null,opW:0,opH:0,confTs:0,fotos:[],fotoIds:[]}}
 function suggestions(key,extra){const h=hist();return[...new Set([...(extra||[]),...h.map(r=>r[key]).filter(Boolean)])].slice(0,60)}
@@ -441,7 +441,8 @@ document.addEventListener('input',e=>{
  const t=e.target;if(t.dataset.flt){const[w,k]=t.dataset.flt.split('.');fobj(w)[k]=t.value;refreshFlt(w);return}
  if(t.id==='invq'){S.invq=t.value;$('#invlist').innerHTML=invListHtml();return}
  if(t.dataset.fl&&S.act){const[i,k]=t.dataset.fl.split('.');S.act.fluidos[+i][k]=t.value;return}
- if(t.dataset.v&&S.act){S.act[t.dataset.v]=t.value;if(t.dataset.v==='equipo'){eqLookupAct(false);refreshLec();refreshAlt()}if(t.dataset.v==='type'){if(!S.act.lecManual)S.act.lecU=lecDef(S.act.type);refreshLec()}if(t.dataset.v==='cat')cambiaCat();return}
+ if(t.dataset.pe&&S.act){const[i,k]=t.dataset.pe.split('.');S.act.personal[+i][k]=t.value;updateDur();return}
+ if(t.dataset.v&&S.act){S.act[t.dataset.v]=t.value;if(['fecha','hora','fechaFin','horaFin'].includes(t.dataset.v))updateDur();if(t.dataset.v==='equipo'){eqLookupAct(false);refreshLec();refreshAlt()}if(t.dataset.v==='type'){if(!S.act.lecManual)S.act.lecU=lecDef(S.act.type);refreshLec()}if(t.dataset.v==='cat')cambiaCat();return}
  if(t.dataset.a&&S.alert){S.alert[t.dataset.a]=t.value;if(t.dataset.a==='equipo')eqLookupAlert(false);return}const r=S.rec;if(!r)return;
  if(t.dataset.f){r[t.dataset.f]=t.value;if(t.dataset.f==='equipo')eqLookupCheck(false)}
  else if(t.dataset.note){(r.it[t.dataset.note]=r.it[t.dataset.note]||{}).note=t.value}
@@ -449,6 +450,7 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',async e=>{
  if(e.target.dataset&&e.target.dataset.f==='equipo'){eqLookupCheck(true);return}
  if(e.target.dataset&&e.target.dataset.a==='equipo'){eqLookupAlert(true);return}
+ if(e.target.dataset&&e.target.dataset.pe&&/\.n$/.test(e.target.dataset.pe)&&S.act){const i=+e.target.dataset.pe.split('.')[0],p=S.act.personal[i],ci=cedulaDe(e.target.value);if(p&&ci&&!String(p.ci||'').trim()){p.ci=ci;const el=document.querySelector('[data-pe="'+i+'.ci"]');if(el)el.value=ci}return}
  if(e.target.dataset&&e.target.dataset.alt&&S.act){const r=S.act,id=e.target.dataset.alt,i=r.alertas.indexOf(id);if(e.target.checked){if(i<0){if(r.alertas.length>=5){e.target.checked=false;toast('Máximo 5 alertas por actividad');return}r.alertas.push(id)}}else if(i>=0)r.alertas.splice(i,1);return}
  if(e.target.dataset&&e.target.dataset.v==='equipo'){eqLookupAct(true);loadAltEq();return}
  if(e.target.id==='sinc'){S.act.sinContador=e.target.checked;if(e.target.checked)S.act.horometro='';refreshLec();return}
@@ -481,6 +483,9 @@ document.addEventListener('click',async e=>{
  else if(a==='vdel'){if(confirm('¿Borrar esta actividad sin enviar?')){saveActs(acts().filter(x=>x.id!==S.act.id));S.view='home';render()}}
  else if(a==='vtar'){const r=S.act,v=b.dataset.v,i=r.tareas.indexOf(v);if(i>=0)r.tareas.splice(i,1);else r.tareas.push(v);$('#tchips').innerHTML=tareasHtml(r)}
  else if(a==='lecu'){S.act.lecU=b.dataset.v;S.act.lecManual=true;refreshLec()}
+ else if(a==='vahora'){const n=new Date();S.act.fechaFin=ymd(n);S.act.horaFin=hm(n);document.querySelector('[data-v=fechaFin]').value=S.act.fechaFin;document.querySelector('[data-v=horaFin]').value=S.act.horaFin;updateDur()}
+ else if(a==='padd'){if(S.act.personal.length<10){S.act.personal.push({n:'',ci:''});$('#pers').innerHTML=personalHtml(S.act);updateDur()}}
+ else if(a==='pdel'){S.act.personal.splice(+b.dataset.i,1);$('#pers').innerHTML=personalHtml(S.act);updateDur()}
  else if(a==='vest'){S.act.estado=b.dataset.v;document.querySelectorAll('#vest .chip').forEach(x=>x.classList.toggle('on',x.dataset.v===S.act.estado))}
  else if(a==='fladd'){S.act.fluidos.push({f:'',q:'',u:'L'});$('#fluids').innerHTML=fluidosHtml(S.act)}
  else if(a==='fldel'){S.act.fluidos.splice(+b.dataset.i,1);$('#fluids').innerHTML=fluidosHtml(S.act)}
@@ -1478,6 +1483,36 @@ function lecHtml(r){
 const lecSig=r=>[r.lecU,r.sinContador?1:0,JSON.stringify(ultimaLectura(r.equipo,r.lecU,r.id))].join('|');
 function refreshLec(){const b=$('#lecbox');if(!b||!S.act)return;const sg=lecSig(S.act);if(b.dataset.sig===sg)return;b.dataset.sig=sg;b.innerHTML=lecHtml(S.act)}
 
+/* ---------- Inicio, finalización, duración y personal de una actividad ---------- */
+const dtMs=(f,h)=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(f||''),k=/^(\d{2}):(\d{2})$/.exec(h||'');return m&&k?Date.UTC(+m[1],+m[2]-1,+m[3],+k[1],+k[2]):null};
+function durMin(r){const a=dtMs(r.fecha,r.hora),b=dtMs(r.fechaFin,r.horaFin);return a!==null&&b!==null?Math.round((b-a)/60000):null}
+function fmtDur(min){if(min==null||min<0)return '-';const h=Math.floor(min/60),m=min%60;return h?h+' h'+(m?' '+m+' min':''):m+' min'}
+function durTxt(r){const m=durMin(r);if(m!==null)return fmtDur(m);return r.horas!==''&&r.horas!=null?r.horas+' h':'-'}
+const personasList=r=>(r.personal||[]).filter(x=>x&&String(x.n).trim()).map(x=>({n:String(x.n).trim(),ci:String(x.ci||'').trim()}));
+function horasHombre(r){const m=durMin(r);return m==null?'-':String(Math.round(m/60*personasList(r).length*100)/100)}
+function durLine(r){
+ const m=durMin(r);
+ if(m===null)return r.fechaFin||r.horaFin?'Completa la fecha y la hora de finalización.':'Sin finalización todavía.';
+ if(m<0)return '⚠ La finalización es anterior al inicio.';
+ const n=personasList(r).length;
+ return 'Duración: <b>'+fmtDur(m)+'</b>'+(n>1?' · Horas-hombre ('+n+' personas): <b>'+horasHombre(r)+'</b>':'');
+}
+function updateDur(){const b=$('#vdur');if(b&&S.act)b.innerHTML=durLine(S.act)}
+function nombresConocidos(){
+ const m=new Map();
+ const put=(n,ci)=>{n=String(n||'').trim();if(!n)return;const k=n.toUpperCase();if(!m.has(k)||(!m.get(k).ci&&ci))m.set(k,{n,ci:String(ci||'').trim()})};
+ acts().forEach(a=>{(a.personal||[]).forEach(x=>put(x.n,x.ci));put(a.por,a.porCI)});
+ hist().forEach(r=>put(r.realizado,r.realizadoCI));
+ if(typeof SES!=='undefined'&&SES)put(SES.nombre,SES.ci);
+ return [...m.values()];
+}
+const cedulaDe=n=>{const k=String(n||'').trim().toUpperCase();const x=nombresConocidos().find(y=>y.n.toUpperCase()===k);return x?x.ci:''};
+const nombresDatalist=()=>'<datalist id="dlPers">'+nombresConocidos().map(x=>`<option value="${esc(x.n)}">`).join('')+'</datalist>';
+function personalHtml(r){
+ return r.personal.map((x,i)=>`<div class="card" style="padding:8px;margin-bottom:8px"><div class="row" style="grid-template-columns:1.6fr 1fr;gap:8px"><div><label style="margin-top:0">Nombre y apellido</label><input data-pe="${i}.n" list="dlPers" value="${esc(x.n)}" autocomplete="off" placeholder="Ej: Mario Pérez"></div><div><label style="margin-top:0">C.I (opcional)</label><input data-pe="${i}.ci" inputmode="numeric" value="${esc(x.ci||'')}" placeholder="Cédula"></div></div>${r.personal.length>1?`<button type="button" class="mini" style="margin-top:8px" data-act="pdel" data-i="${i}">Quitar a esta persona</button>`:''}</div>`).join('')
+  +(r.personal.length<10?'<button type="button" class="btn" style="width:100%" data-act="padd">Agregar otra persona</button>':'');
+}
+
 /* ---------- Relación entre actividades y alertas de falla ---------- */
 // Alerta -> actividades que la atienden: lo que informa el servidor (rel) más lo que hay en este teléfono.
 function relList(a){
@@ -1545,8 +1580,8 @@ const acts=()=>store.get('chq_acts',[]);
 function saveActs(l){return store.set('chq_acts',l.sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora)).slice(0,300))}
 const pendientesV=()=>acts().filter(a=>a.sync===false&&a.porCI===(SES&&SES.ci));
 const puedeEditarAct=a=>a.porCI===SES.ci&&(a.sync===false||(Date.now()-(a.creadoTs||0))<86400000);   // el autor corrige hasta 24 h después
-function newAct(cat){const d=new Date();return{id:'V'+Date.now().toString(36),cat,alertas:[],type:'maq',equipo:'',sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),fecha:ymd(d),hora:hm(d),tareas:[],desc:'',fluidos:cat==='flu'?[{f:'',q:'',u:'L'}]:[],repuestos:'',horas:'',horometro:'',lecU:'h',sinContador:false,lecManual:false,estado:'completada',fotos:[],fotoIds:[],por:SES.nombre,porCI:SES.ci,porRol:SES.rol,confTs:0,sync:false}}
-function normAct(r){r.alertas=r.alertas||[];if(!r.lecU)r.lecU=(r.horometro!==''&&r.horometro!=null)?'h':lecDef(r.type);if(r.horometro==null)r.horometro='';if(r.horas==null)r.horas='';r.fotos=r.fotos||[];r.fotoIds=r.fotoIds||[];r.tareas=r.tareas||[];r.fluidos=r.fluidos||[];if(r.cat==='flu'&&!r.fluidos.length)r.fluidos=[{f:'',q:'',u:'L'}];return r}
+function newAct(cat){const d=new Date();return{id:'V'+Date.now().toString(36),cat,alertas:[],fechaFin:'',horaFin:'',personal:[{n:SES.nombre,ci:SES.ci}],type:'maq',equipo:'',sede:store.get('last_sede','VEPBL'),patio:store.get('last_patio',''),fecha:ymd(d),hora:hm(d),tareas:[],desc:'',fluidos:cat==='flu'?[{f:'',q:'',u:'L'}]:[],repuestos:'',horas:'',horometro:'',lecU:'h',sinContador:false,lecManual:false,estado:'completada',fotos:[],fotoIds:[],por:SES.nombre,porCI:SES.ci,porRol:SES.rol,confTs:0,sync:false}}
+function normAct(r){r.alertas=r.alertas||[];r.fechaFin=r.fechaFin||'';r.horaFin=r.horaFin||'';r.personal=r.personal||[];if(!r.lecU)r.lecU=(r.horometro!==''&&r.horometro!=null)?'h':lecDef(r.type);if(r.horometro==null)r.horometro='';if(r.horas==null)r.horas='';r.fotos=r.fotos||[];r.fotoIds=r.fotoIds||[];r.tareas=r.tareas||[];r.fluidos=r.fluidos||[];if(r.cat==='flu'&&!r.fluidos.length)r.fluidos=[{f:'',q:'',u:'L'}];return r}
 function validAct(r){
  if(!String(r.equipo).trim())return 'Falta el ID del equipo';
  if(r.cat==='flu'){
@@ -1555,7 +1590,12 @@ function validAct(r){
   if(con.some(x=>!x.f))return 'Elige el fluido en todas las filas';
   if(con.some(x=>!(Number(String(x.q).replace(',','.'))>0)))return 'Revisa las cantidades de los fluidos';
  }else if(r.desc.trim().length<10)return 'Describe la actividad (mínimo 10 letras)';
- if(r.horas!==''&&!(Number(String(r.horas).replace(',','.'))>=0))return 'Revisa la duración del trabajo';
+ if(!r.fecha||!r.hora)return 'Falta la fecha y la hora de inicio';
+ if((r.fechaFin||r.horaFin)&&!(r.fechaFin&&r.horaFin))return 'Completa la fecha y la hora de finalización';
+ if(r.estado==='completada'&&!(r.fechaFin&&r.horaFin))return 'Falta la fecha y la hora de finalización (o marca "En proceso")';
+ if(r.fechaFin&&r.horaFin&&durMin(r)<0)return 'La finalización es anterior al inicio';
+ if(!r.personal.some(x=>String(x.n).trim()))return 'Agrega al menos una persona que realizó la actividad';
+ if(r.personal.some(x=>String(x.ci||'').trim()&&!/^\d{5,10}$/.test(String(x.ci).trim())))return 'La cédula del personal debe tener de 5 a 10 números';
  if(!r.sinContador){
   if(String(r.horometro).trim()==='')return 'Falta la lectura de '+(r.lecU==='km'?'kilómetros':'horas')+' del equipo (o marca "Sin contador")';
   if(!(numLec(r.horometro)>=0))return 'Revisa la lectura del equipo';
@@ -1565,13 +1605,13 @@ function validAct(r){
 function actMsg(r){
  const c=CATS[r.cat],fl=(r.fluidos||[]).filter(x=>x.f&&String(x.q)!=='');
  let m='*REPORTE DE ACTIVIDAD - '+c.n.toUpperCase()+'*\n';
- m+='Equipo: '+r.equipo+' ('+eqName(r.type)+')\n'+eqDetalle(r.equipo)+'Sede / Patio: '+r.sede+(r.patio?' / '+r.patio:'')+'\nFecha: '+fd(r.fecha)+' '+r.hora+'\n';
+ m+='Equipo: '+r.equipo+' ('+eqName(r.type)+')\n'+eqDetalle(r.equipo)+'Sede / Patio: '+r.sede+(r.patio?' / '+r.patio:'')+'\nInicio: '+fd(r.fecha)+' '+r.hora+'\n'+(r.fechaFin?'Fin: '+fd(r.fechaFin)+' '+r.horaFin+' · Duración: '+durTxt(r)+'\n':(r.estado==='proceso'?'Fin: pendiente (en proceso)\n':''));
  if((r.tareas||[]).length)m+='Trabajos: '+r.tareas.join(', ')+'\n';
  if(fl.length)m+='Fluidos repuestos: '+fl.map(x=>x.f+' '+x.q+' '+x.u).join('; ')+'\n';
  {const al=(r.alertas||[]).map(id=>altInfoOne(id,r));if(al.length)m+='Relacionada con alerta(s) de falla: '+al.map(x=>x.comp+' ('+((GRAV[x.grav]||{}).n||'?')+(x.fecha?' '+fd(x.fecha):'')+')').join('; ')+'\n'}
  if((r.desc||'').trim())m+='\n'+r.desc.trim()+'\n';
  if((r.repuestos||'').trim())m+='\nRepuestos / materiales: '+r.repuestos.trim()+'\n';
- const dt=[];if(r.horas!==''&&r.horas!=null)dt.push('Duración del trabajo: '+r.horas+' h');dt.push('Lectura del equipo: '+lecTxt(r));m+=dt.join(' · ')+'\n';
+ const dt=[];{const pe=personasList(r);if(pe.length){m+='Personal ('+pe.length+'): '+pe.map(x=>x.n+(x.ci?' (C.I '+x.ci+')':'')).join(', ')+'\n';if(r.fechaFin)dt.push('Horas-hombre: '+horasHombre(r))}}dt.push('Lectura del equipo: '+lecTxt(r));m+=dt.join(' · ')+'\n';
  m+='Estado: '+VEST[r.estado]+'\n';
  const nf=nFC(r);if(nf)m+='Fotos: '+nf+'\n';
  m+='Realizado y confirmado digitalmente por: '+r.por+' ('+rolNom(r.porRol)+')'+(r.confTs?' el '+fdm(r.confTs):'');
@@ -1623,7 +1663,20 @@ function vAvForm(){
  <h2>${flu?'Observaciones':'Descripción de la actividad *'}</h2>
  <textarea data-v="desc" placeholder="${flu?'Opcional: nivel encontrado, fugas, motivo...':'¿Qué se hizo? Pieza, falla, procedimiento...'}">${esc(r.desc)}</textarea>
  <div class="card" style="margin-top:10px"><label style="margin-top:0">Repuestos / materiales usados</label><input data-v="repuestos" value="${esc(r.repuestos)}" placeholder="Opcional">
-  <label>Duración del trabajo (horas)</label><input data-v="horas" inputmode="decimal" value="${esc(r.horas)}" placeholder="Ej: 2.5 (opcional)"></div>
+</div>
+ <h2>Fecha y hora *</h2>
+ <div class="card" id="vfh">
+  <label style="margin-top:0">Inicio</label>
+  <div class="row"><input type="date" data-v="fecha" value="${esc(r.fecha)}" aria-label="Fecha de inicio"><input type="time" data-v="hora" value="${esc(r.hora)}" aria-label="Hora de inicio"></div>
+  <label>Finalización</label>
+  <div class="row"><input type="date" data-v="fechaFin" value="${esc(r.fechaFin)}" aria-label="Fecha de finalización"><input type="time" data-v="horaFin" value="${esc(r.horaFin)}" aria-label="Hora de finalización"></div>
+  <button type="button" class="mini" style="margin-top:8px" data-act="vahora">Poner la finalización ahora</button>
+  <p id="vdur" class="cnt" style="margin:8px 0 0">${durLine(r)}</p>
+  <p style="margin:4px 0 0;font-size:13px;color:var(--mute)">Si el trabajo sigue en proceso, deja la finalización vacía y marca "En proceso" más abajo.</p>
+ </div>
+ <h2>Personal que realizó la actividad *</h2>
+ <div id="pers">${personalHtml(r)}</div>
+ ${nombresDatalist()}
  <h2>Lectura del equipo al hacer la actividad *</h2>
  <div class="card" id="lecbox" data-sig="${esc(lecSig(r))}">${lecHtml(r)}</div>
  <h2>Estado de la actividad</h2>
@@ -1663,6 +1716,8 @@ async function saveAct(){
  else{const ul=ultimaLectura(r.equipo,r.lecU,r.id);if(ul&&numLec(r.horometro)<ul.v&&!confirm('La lectura ('+String(r.horometro)+' '+(r.lecU==='km'?'km':'h')+') es menor que la última registrada ('+fmtLec(ul.v,ul.u)+' el '+fd(ul.f)+'). ¿Es correcta?'))return}
  if(!(await askPin('Confirma la actividad con tu PIN')))return;
  r.confTs=Date.now();r.equipo=String(r.equipo).trim();r.sync=false;
+ r.personal=r.personal.map(x=>({n:String(x.n).trim(),ci:String(x.ci||'').trim()})).filter(x=>x.n);
+ if(r.fechaFin&&r.horaFin)r.horas=Math.round(durMin(r)/60*100)/100;
  store.set('last_sede',r.sede);store.set('last_patio',r.patio);
  const l=acts().filter(x=>x.id!==r.id);l.push(r);if(!saveActs(l))return;
  S.tab='act';S.view='avresult';render();toast('Actividad guardada');
@@ -1702,7 +1757,8 @@ async function exportAct(r,kind){
   await deliver(blob,name);
  }catch(err){console.error(err);toast('No se pudo crear el archivo')}
 }
-const actInfo=r=>{const c=CATS[r.cat];return [[['TIPO:',eqName(r.type)],['ACTIVIDAD:',c.n],['ESTADO:',VEST[r.estado]]],[['ID:',r.equipo],['DURACION:',r.horas===''||r.horas==null?'-':r.horas+' h'],['LECTURA:',lecTxt(r)]],[['SEDE:',r.sede],['PATIO:',r.patio],['REALIZA:',r.por]]]};
+const actInfo=r=>{const c=CATS[r.cat];return [
+ [['TIPO:',eqName(r.type)],['ACTIVIDAD:',c.n],['ESTADO:',VEST[r.estado]]],[['ID:',r.equipo],['SEDE:',r.sede],['PATIO:',r.patio]],[['INICIO:',fd(r.fecha)+' '+r.hora],['FIN:',r.fechaFin?fd(r.fechaFin)+' '+r.horaFin:'-'],['DURACION:',durTxt(r)]],[['LECTURA:',lecTxt(r)],['REPORTA:',r.por],['PERSONAL:',personasList(r).length+' persona'+(personasList(r).length===1?'':'s')]]];};
 async function buildActXlsx(r,photos){
  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('REPORTE DE ACTIVIDAD',{pageSetup:{orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:.25,right:.25,top:.75,bottom:.75,header:.3,footer:.3}}});
  COLW.forEach((w,i)=>{ws.getColumn(i+1).width=w});
@@ -1723,7 +1779,7 @@ async function buildActXlsx(r,photos){
   m(rr,4,rr,5,rw[1][0],{bold:true,size:10});m(rr,6,rr,7,rw[1][1],{h:'center'});
   m(rr,8,rr,9,rw[2][0],{bold:true});m(rr,10,rr,12,rw[2][1],{h:'center'});
  });
- let R=8;
+ let R=9;
  const sec=t=>{ws.getRow(R).height=15;m(R,1,R,12,t,{bold:true,size:12,h:'center',box:true,fill:GREY});R++};
  const body=(txt,n)=>{for(let k=0;k<n;k++)ws.getRow(R+k).height=15;m(R,1,R+n-1,12,txt,{box:true,top:true});R+=n};
  if((r.tareas||[]).length){sec('TRABAJOS REALIZADOS');body(r.tareas.join('  ·  '),2)}
@@ -1735,6 +1791,12 @@ async function buildActXlsx(r,photos){
   fl.forEach(x=>{ws.getRow(R).height=18;m(R,1,R,6,x.f,{box:true});m(R,7,R,9,String(x.q),{box:true,h:'center'});m(R,10,R,12,x.u,{box:true,h:'center'});R++});
  }
  if((r.repuestos||'').trim()){sec('REPUESTOS / MATERIALES USADOS');body(r.repuestos,2)}
+ const pl=personasList(r);
+ if(pl.length){
+  sec('PERSONAL QUE REALIZO LA ACTIVIDAD');
+  ws.getRow(R).height=18;m(R,1,R,8,'NOMBRE',{bold:true,h:'center',box:true,fill:GREY});m(R,9,R,12,'C.I',{bold:true,h:'center',box:true,fill:GREY});R++;
+  pl.forEach(x=>{ws.getRow(R).height=18;m(R,1,R,8,x.n,{box:true});m(R,9,R,12,x.ci||'',{box:true,h:'center'});R++});
+ }
  const alr=(r.alertas||[]).map(id=>altInfoOne(id,r));
  if(alr.length){
   sec('ALERTAS DE FALLA RELACIONADAS');
@@ -1789,6 +1851,12 @@ function buildActPdf(r,photos){
   fl.forEach(x=>{need(6);cell(0,5,y,6,x.f,{size:9,box:true});cell(6,8,y,6,String(x.q),{size:9,box:true,align:'center'});cell(9,11,y,6,x.u,{size:9,box:true,align:'center'});y+=6});
  }
  if((r.repuestos||'').trim()){sec('REPUESTOS / MATERIALES USADOS');body(r.repuestos,12)}
+ const pl=personasList(r);
+ if(pl.length){
+  sec('PERSONAL QUE REALIZO LA ACTIVIDAD');
+  need(6);cell(0,7,y,6,'NOMBRE',{bold:true,size:9,align:'center',box:true,fill:GR});cell(8,11,y,6,'C.I',{bold:true,size:9,align:'center',box:true,fill:GR});y+=6;
+  pl.forEach(x=>{need(6);cell(0,7,y,6,x.n,{size:9,box:true});cell(8,11,y,6,x.ci||'',{size:9,box:true,align:'center'});y+=6});
+ }
  const alr=(r.alertas||[]).map(id=>altInfoOne(id,r));
  if(alr.length){
   sec('ALERTAS DE FALLA RELACIONADAS');
